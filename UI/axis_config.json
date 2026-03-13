@@ -1,0 +1,75 @@
+{
+  "description": "SCARA Robot Axis Configuration - Translation from physical units to motor steps",
+  "version": "1.0",
+  "axes": {
+    "X": {
+      "name": "X Axis",
+      "type": "linear",
+      "unit": "degrees",
+      "steps_per_unit": 45.45,
+      "comment_steps": "45.45 Motor steps per degree. ",
+      "default_speed": 1000,
+      "default_direction": -1,
+      "comment_direction": "1 = clockwise, -1 = counter-clockwise",
+      "min_limit_deg": -180.0,
+      "max_limit_deg": 180.0,
+      "enabled": true
+    },
+    "Y": {
+      "name": "Y Axis",
+      "type": "linear",
+      "unit": "cm",
+      "steps_per_unit":200.0,
+      "comment_steps": "Motor steps per cm",
+      "default_speed": 1000,
+      "comment_speed": "Default speed in steps per second",
+      "default_direction": 1,
+      "comment_direction": "1 = clockwise, -1 = counter-clockwise",
+      "min_limit_mm": -300.0,
+      "max_limit_mm": 300.0,
+      "enabled": true
+    },
+    "Z": {
+      "name": "Z Axis",
+      "type": "linear",
+      "unit": "degrees",
+      "steps_per_unit": 35.71,
+      "comment_steps": "35.71 Motor steps per degree",
+      "default_speed": 1000,
+      "default_direction": 1,
+      "comment_direction": "1 = clockwise, -1 = counter-clockwise",
+      "min_limit_deg": -180.0,
+      "max_limit_deg": 180.0,
+      "enabled": true
+    },
+    "A": {
+      "name": "A Axis (Rotation)",
+      "type": "rotational",
+      "unit": "degrees",
+      "steps_per_unit": 10.0,
+      "comment_steps": "10.0 Motor steps per degree",
+      "default_speed": 500,
+      "default_direction": 1,
+      "comment_direction": "1 = clockwise, -1 = counter-clockwise",
+      "min_limit_deg": -180.0,
+      "max_limit_deg": 180.0,
+      "enabled": true
+    }
+  },
+  "calibration_notes": {
+    "steps_per_mm": "For linear axes with GT2 belt (2mm pitch) and 20-tooth pulley: steps_per_mm = (200 * 16) / (2 * 20) = 160",
+    "steps_per_degree": "For direct drive 200-step motor with 16x microstepping: steps_per_degree = (200 * 16) / 360 = 8.889",
+    "microstepping": "Update values based on your A4988 driver microstepping configuration (usually 1, 2, 4, 8, or 16)",
+    "direction": "If axis moves in wrong direction, change default_direction from 1 to -1 or vice versa"
+  },
+  "gripper": {
+    "name": "Servo Gripper",
+    "type": "servo",
+    "min_angle": 0,
+    "max_angle": 180,
+    "default_angle": 90,
+    "open_angle": 90,
+    "closed_angle": 180,
+    "enabled": true
+  }
+}
