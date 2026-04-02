@@ -1,0 +1,486 @@
+================================================================================
+SCARA ROBOT CONTROLLER - SYSTEM FLOWS DOCUMENTATION
+================================================================================
+Last Updated: March 22, 2026
+Version: 1.0
+
+This document describes the various operational flows in the SCARA Robot 
+Controller application. Update this file when adding new features or modifying 
+existing workflows.
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+1. Application Initialization Flow
+2. Movement Execution Flow
+3. Homing Flow
+4. Stopper Status Query Flow
+5. User Interface Interaction Flow
+6. Error Handling Flow
+7. Shutdown Flow
+8. Data Flow Between Components
+
+================================================================================
+1. APPLICATION INITIALIZATION FLOW
+================================================================================
+
+START → main() in app.py
+  |
+  ├─→ SERIAL CONNECTION ATTEMPT
+  |     ├─→ Create SerialLink(PORT="COM3", BAUD=115200)
+  |     ├─→ link.open()
+  |     ├─→ handshake(link)
+  |     |     ├─→ SUCCESS: enable(link, True)  → Motors Enabled
+  |     |     └─→ FAILURE: link.close() → link = None
+  |     └─→ EXCEPTION: link = None → Offline Mode
+  |
+  ├─→ CREATE TKINTER ROOT WINDOW
+  |     └─→ root = tk.Tk()
+  |
+  ├─→ CREATE ROBOT CONTROLLER (Business Logic)
+  |     └─→ robot_controller = RobotController(serial_link=link)
+  |           |
+  |           ├─→ Initialize State Variables:
+  |           |     ├─→ X_cmd, Y_cmd, Z_cmd, A_cmd = ""
+  |           |     ├─→ Y_upper_limit, Y_lower_limit = 0
+  |           |     ├─→ Y/X/Z/A_stopper_status = False
+  |           |     └─→ Y/X/Z/A_homing_status = False
+  |           |
+  |           ├─→ load_axis_config()
+  |           |     ├─→ Read axis_config.json
+  |           |     ├─→ Parse JSON
+  |           |     └─→ Return config dict or None
+  |           |
+  |           └─→ load_axis_limits()
+  |                 └─→ Extract y_min_limit, y_max_limit from config
+  |
+  ├─→ CREATE UI (Presentation Layer)
+  |     └─→ app = ScaraMainWindow(root, robot_controller)
+  |           |
+  |           ├─→ Configure Window (title, geometry, minsize)
+  |           |
+  |           ├─→ create_left_panel()
+  |           |     ├─→ Get axis defaults from robot_controller
+  |           |     ├─→ Create AxisControlRow for Y, X, Z, A
+  |           |     ├─→ Create GripControlRow
+  |           |     └─→ Create GO button
+  |           |
+  |           ├─→ create_right_panel()
+  |           |     └─→ Placeholder for inverse kinematics
+  |           |
+  |           ├─→ create_status_panel()
+  |           |     ├─→ Create stopper_indicators (Canvas widgets)
+  |           |     ├─→ Create homing_indicators (Canvas widgets)
+  |           |     └─→ Create remain_entries (Entry widgets)
+  |           |
+  |           ├─→ create_action_buttons()
+  |           |     └─→ Exit, Home, Home Status, Estop, CLR, Tech, Sync
+  |           |
+  |           ├─→ create_log_panel()
+  |           |     └─→ ScrolledText widget for logging
+  |           |
+  |           └─→ IF connected: schedule update_all_stopper_status (500ms)
+  |
+  ├─→ WIRE LOGGING
+  |     └─→ robot_controller.log = app.log
+  |
+  ├─→ SET CLOSE HANDLER
+  |     └─→ root.protocol("WM_DELETE_WINDOW", on_closing)
+  |
+  └─→ START EVENT LOOP
+        └─→ root.mainloop() → Application Running
+
+================================================================================
+2. MOVEMENT EXECUTION FLOW
+================================================================================
+
+USER INTERACTION:
+  User enters movement, direction, speed → Clicks "do" button
+    ↓
+  AxisControlRow.on_do_pressed()
+    ├─→ Calculate movement_value (apply direction, steps_per_unit)
+    ├─→ Build cmd_string: "{axis} {movement} {speed}"
+    └─→ robot_controller.update_axis_command(axis, cmd_string)
+          └─→ Sets Y_cmd/X_cmd/Z_cmd/A_cmd in controller
+
+USER CLICKS "GO" BUTTON:
+  app.on_go_pressed()
+    ↓
+  robot_controller.execute_all_movements()
+    |
+    FOR each axis with non-empty command:
+      |
+      ├─→ robot_controller.execute_movement(axis_name, cmd)
+      |     |
+      |     ├─→ Send command via Robot_command(cmd, link)
+      |     |
+      |     ├─→ Calculate timeout = (steps / speed) + 1
+      |     |
+      |     ├─→ POLL FOR COMPLETION (with timeout):
+      |     |     |
+      |     |     WHILE time < timeout:
+      |     |       ├─→ Read response from link.ser.readline()
+      |     |       |
+      |     |       ├─→ IF "R:OK done"
+      |     |       |     ├─→ movement_done = True
+      |     |       |     └─→ BREAK
+      |     |       |
+      |     |       ├─→ IF "STOPPER_HIT" or "R:ERR"
+      |     |       |     ├─→ stopper_hit = True
+      |     |       |     └─→ BREAK
+      |     |       |
+      |     |       └─→ sleep(0.1)  # Avoid busy-waiting
+      |     |
+      |     ├─→ query_stopper_status(axis_name)
+      |     |     └─→ Update axis_stopper_status
+      |     |
+      |     └─→ RETURN {'success': bool, 'stopper_hit': bool, 'response': str}
+      |
+      ├─→ IF success AND axis is Y AND homing_status:
+      |     └─→ update_limiters_value(axis, cmd)
+      |           ├─→ Y_upper_limit = max_limit - movement
+      |           └─→ Y_lower_limit = movement
+      |
+      └─→ Store result in results dict
+
+  RETURN TO UI:
+    ├─→ Update stopper indicators for all executed axes
+    ├─→ Update Y remain values if Y axis moved
+    ├─→ Log completion message
+    └─→ Reset all axis "do" buttons to unpressed state
+
+================================================================================
+3. HOMING FLOW
+================================================================================
+
+USER CLICKS "HOME" BUTTON:
+  app.on_home()
+    ↓
+  robot_controller.home_axis("Y", homing_cmd="Y 20000 1000", backoff_cmd="Y -200 1000")
+    |
+    ├─→ Clear all axis commands (X_cmd, Y_cmd, Z_cmd, A_cmd = "")
+    |
+    ├─→ update_axis_command("Y", homing_cmd)
+    |
+    ├─→ execute_movement("Y", homing_cmd)
+    |     |
+    |     ├─→ Send "Y 20000 1000" to robot
+    |     ├─→ Robot moves Y axis towards stopper
+    |     └─→ Wait for "STOPPER_HIT" or "R:OK done"
+    |
+    ├─→ getattr(self, "Y_stopper_status")  # Check if stopper hit
+    |
+    ├─→ IF stopper_status == True:
+    |     |
+    |     ├─→ Log "[Home] Y HOMED successfully"
+    |     |
+    |     ├─→ setattr(self, "Y_homing_status", True)
+    |     |
+    |     ├─→ update_axis_command("Y", backoff_cmd)
+    |     |
+    |     ├─→ execute_movement("Y", backoff_cmd)
+    |     |     └─→ Move Y axis -200 steps away from stopper
+    |     |
+    |     └─→ RETURN "Y Homed"
+    |
+    └─→ ELSE:
+          ├─→ Log "[Home] Y FAILED to home - no stopper hit"
+          ├─→ setattr(self, "Y_homing_status", False)
+          └─→ RETURN "Y Failed homing"
+
+  RETURN TO UI:
+    ├─→ Update stopper indicator for Y
+    ├─→ Update homing indicator for Y
+    └─→ Log homing result
+
+================================================================================
+4. STOPPER STATUS QUERY FLOW
+================================================================================
+
+TRIGGERED BY:
+  - Initial startup (500ms after UI loads, if connected)
+  - User clicks "Home Status" button
+  - After any movement completion
+
+FLOW:
+  app.update_all_stopper_status()
+    ↓
+  robot_controller.query_all_stopper_status()
+    |
+    FOR each axis in ['Y', 'X', 'Z', 'A']:
+      |
+      ├─→ robot_controller.query_stopper_status(axis)
+      |     |
+      |     ├─→ Build command: "{AXIS}STOP?"  (e.g., "YSTOP?")
+      |     |
+      |     ├─→ Robot_command(cmd, link)
+      |     |     └─→ Send query to robot via serial
+      |     |
+      |     ├─→ Receive response: "R:YSTOPPER_PIN=0" or "R:YSTOPPER_PIN=1"
+      |     |
+      |     └─→ RETURN True if "=1", False if "=0"
+      |
+      ├─→ setattr(self, f"{axis}_stopper_status", is_pressed)
+      |
+      └─→ status[axis] = is_pressed
+
+  RETURN status dict to UI
+    ↓
+  FOR each axis, result in status.items():
+    └─→ app.update_stopper_indicator(axis, is_pressed)
+          ├─→ Set indicator color (red if pressed, green if not)
+          └─→ Update canvas widget
+
+================================================================================
+5. USER INTERFACE INTERACTION FLOW
+================================================================================
+
+5.1 AXIS CONTROL "DO" BUTTON:
+  User clicks "do" → Toggle button state
+    ├─→ IF pressed:
+    |     ├─→ Change button color to green, sunken relief
+    |     ├─→ Build command string
+    |     ├─→ Update robot_controller axis command
+    |     └─→ Log "{AXIS} Mode ACTIVE"
+    |
+    └─→ IF unpressed:
+          ├─→ Change button color to gray, raised relief
+          ├─→ Clear robot_controller axis command
+          └─→ Log "{AXIS} Mode DEACTIVATED"
+
+5.2 GO BUTTON:
+  See "2. MOVEMENT EXECUTION FLOW" above
+
+5.3 HOME BUTTON:
+  See "3. HOMING FLOW" above
+
+5.4 HOME STATUS BUTTON:
+  See "4. STOPPER STATUS QUERY FLOW" above
+
+5.5 SYNC BUTTON:
+  User clicks "Sync"
+    ↓
+  robot_controller.sync()
+    ├─→ Robot_command("sync", link)
+    ├─→ Log "[Sync] Sending handshake..."
+    └─→ Log "[Sync] SUCCESS: Robot responded READY = {response}"
+
+5.6 EXIT BUTTON:
+  User clicks "Exit" OR closes window
+    ↓
+  app.on_exit()
+    ↓
+  robot_controller.cleanup()
+    ├─→ enable(link, False)  # Disable motors
+    ├─→ link.close()         # Close serial connection
+    └─→ Log "[System] Shutting down robot controller..."
+    ↓
+  root.destroy()  # Close Tkinter window
+
+================================================================================
+6. ERROR HANDLING FLOW
+================================================================================
+
+6.1 SERIAL CONNECTION ERROR:
+  During Initialization:
+    ├─→ EXCEPTION caught in main()
+    ├─→ Print error message to console
+    ├─→ Set link = None
+    └─→ Continue in offline mode
+
+  During Operation:
+    ├─→ robot_controller checks if self.link exists
+    ├─→ IF no link: Log error, return early
+    └─→ No commands sent to robot
+
+6.2 MOVEMENT TIMEOUT:
+  execute_movement() detects no response within timeout
+    ├─→ Log "[Movement] {AXIS} TIMEOUT - no completion after {timeout}s"
+    ├─→ Query stopper status to determine final state
+    └─→ RETURN {'success': False, 'stopper_hit': False, ...}
+
+6.3 STOPPER HIT DURING MOVEMENT:
+  Robot sends "STOPPER_HIT" response
+    ├─→ execute_movement() detects response
+    ├─→ Set stopper_hit = True
+    ├─→ Break from polling loop
+    ├─→ Update stopper_status to True
+    └─→ RETURN {'success': False, 'stopper_hit': True, ...}
+
+6.4 CONFIGURATION FILE MISSING:
+  load_axis_config() can't find axis_config.json
+    ├─→ Print warning to console
+    ├─→ RETURN None
+    └─→ Use fallback default values for all axes
+
+6.5 INVALID AXIS NAME:
+  update_axis_command() receives unknown axis
+    ├─→ Log "[Update Command] ERROR: Invalid axis name {axis}"
+    └─→ RETURN False
+
+================================================================================
+7. SHUTDOWN FLOW
+================================================================================
+
+TRIGGERED BY:
+  - User clicks "Exit" button
+  - User closes window (X button)
+
+FLOW:
+  on_closing() [window close handler]
+    ↓
+  app.on_exit()
+    ├─→ Log "[System] Exit pressed - closing application"
+    ├─→ root.update()  # Force UI update
+    |
+    ├─→ robot_controller.cleanup()
+    |     ├─→ Log "[System] Shutting down robot controller..."
+    |     |
+    |     ├─→ IF link exists:
+    |     |     ├─→ enable(link, False)  # Disable stepper motors
+    |     |     └─→ link.close()         # Close serial port
+    |     |
+    |     └─→ RETURN
+    |
+    └─→ root.destroy()  # Destroy Tkinter window
+          └─→ Exit application
+
+================================================================================
+8. DATA FLOW BETWEEN COMPONENTS
+================================================================================
+
+8.1 COMPONENT ARCHITECTURE:
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │                        app.py (Main)                        │
+  │  - Serial connection management                             │
+  │  - Wires controller ↔ UI                                    │
+  └──────────────────┬────────────────────┬─────────────────────┘
+                     │                    │
+         ┌───────────▼──────────┐    ┌───▼──────────────────┐
+         │  app_logic.py        │    │   app_ui.py          │
+         │  (RobotController)   │◄───┤  (ScaraMainWindow)   │
+         │                      │    │                      │
+         │  Business Logic:     │    │  Presentation:       │
+         │  - State management  │    │  - Widgets & Layout  │
+         │  - Serial comm       │    │  - User events       │
+         │  - Movement logic    │    │  - Visual updates    │
+         │  - Homing logic      │    │                      │
+         └──────────┬───────────┘    └──────────────────────┘
+                    │
+                    │
+         ┌──────────▼────────────────────────────────┐
+         │  Hardware Layer (via serial_link.py)     │
+         │  - SerialLink                             │
+         │  - Robot_Command                          │
+         │  - Arduino Firmware (main.cpp)            │
+         └───────────────────────────────────────────┘
+
+8.2 DATA FLOW EXAMPLES:
+
+  USER INPUT → UI:
+    User enters movement → AxisControlRow widget
+      ↓
+    AxisControlRow.on_do_pressed()
+      ↓
+    robot_controller.update_axis_command(axis, cmd_string)
+      ↓
+    Controller stores command in Y_cmd / X_cmd / Z_cmd / A_cmd
+      ↓
+    Log message sent to app.log()
+      ↓
+    LogPanel displays message
+
+  CONTROLLER → HARDWARE:
+    robot_controller.execute_movement(axis, cmd)
+      ↓
+    Robot_command(cmd, link, log)
+      ↓
+    serial_link.write(bytes)
+      ↓
+    Arduino receives command via Serial
+      ↓
+    Firmware executes stepper movement
+      ↓
+    Firmware sends response "R:OK done"
+      ↓
+    serial_link.readline()
+      ↓
+    robot_controller receives response
+      ↓
+    Update stopper_status
+      ↓
+    RETURN result dict
+
+  HARDWARE → UI:
+    Stopper status query initiated
+      ↓
+    robot_controller.query_stopper_status(axis)
+      ↓
+    Arduino reads digital pin
+      ↓
+    Firmware sends "R:YSTOPPER_PIN=1"
+      ↓
+    robot_controller parses response
+      ↓
+    Update Y_stopper_status = True
+      ↓
+    RETURN True to UI
+      ↓
+    app.update_stopper_indicator("Y", True)
+      ↓
+    Canvas widget changes to red
+
+8.3 STATE SYNCHRONIZATION:
+
+  Controller State Variables:
+    - X/Y/Z/A_cmd (command strings)
+    - X/Y/Z/A_stopper_status (boolean)
+    - X/Y/Z/A_homing_status (boolean)
+    - Y_upper_limit, Y_lower_limit (integers)
+
+  UI Representation:
+    - stopper_indicators[axis] (Canvas color)
+    - homing_indicators[axis] (Canvas color)
+    - remain_entries[axis] (Entry text)
+
+  Synchronization Points:
+    - After movement: Query stopper → Update controller state → Update UI
+    - After homing: Set homing_status → Update UI indicator
+    - On startup: Initialize all states → Render initial UI
+
+================================================================================
+9. FUTURE FLOWS TO DOCUMENT (PLACEHOLDERS)
+================================================================================
+
+9.1 INVERSE KINEMATICS FLOW (Not yet implemented)
+  - To be added when inverse kinematics panel is implemented
+
+9.2 GRIPPER CONTROL FLOW (Placeholder in UI)
+  - To be added when gripper commands are implemented
+
+9.3 MULTI-AXIS COORDINATED MOVEMENT
+  - To be added if coordinated movements are needed
+
+9.4 POSITION SAVING/RECALL
+  - To be added if position memory feature is implemented
+
+9.5 EMERGENCY STOP FLOW
+  - To be added when E-Stop functionality is implemented
+
+9.6 TECH MODE OPERATIONS
+  - To be added when Tech button functionality is defined
+
+9.7 CLR (CLEAR) OPERATIONS
+  - To be added when CLR button functionality is defined
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+
+Notes:
+- Update this document when adding new features
+- Document both normal and error paths
+- Include timing information where relevant
+- Reference specific file names and line numbers when helpful
+- Keep flows at appropriate level of detail (not too granular, not too abstract)

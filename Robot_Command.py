@@ -1,4 +1,5 @@
 from os import link
+import time
 
 from protocol import ask
 from serial_link import SerialLink
@@ -7,7 +8,10 @@ from motions import handshake, enable, xstep, wait_done
 PORT = "COM3"
 BAUD = 115200
 
-def Robot_command (user_input, link):
+def Robot_command (user_input, link, log=None):
+
+    log(f"[GO] Executing Robot command")
+
     if not user_input:
         return "No command entered"
 
@@ -15,38 +19,38 @@ def Robot_command (user_input, link):
     parts = cmd.split()
     # Quit
     if cmd in ("q", "quit", "exit"):
-        return "Quit command received"
+        return f"Quit command received"
        
     # test the ESTOP button
     if cmd in ("estop?", "estop"):
         resp = ask(link, "ESTOP?")
-        return(resp)
+        return f"{resp}"
 
     # test the X stopper switch
     if cmd in ("xstop?", "xstop"):
         resp = ask(link, "XSTOP?")
-        return(resp)
+        return f"{resp}"
 
     # test the Y stopper switch
     if cmd in ("ystop?", "ystop"):
         resp = ask(link, "YSTOP?")
-        return(resp)
+        return f"{resp}"
 
     # test the Z stopper switch
     if cmd in ("zstop?", "zstop"):
         resp = ask(link, "ZSTOP?")
-        return(resp)
+        return f"{resp}"
 
     # test the A stopper switch
     if cmd in ("astop?", "astop"):
         resp = ask(link, "ASTOP?")
-        return(resp)
+        return f"{resp}"
 
     # Test A direction pin
     if cmd in ("adir?", "adir"):
         print("Testing A_DIR pin (will toggle 5 times)...")
         resp = ask(link, "ADIR?")
-        return(resp)
+        return f"{resp}"
 
     # Enable / disable technician mode
     if cmd.startswith("tech"):
@@ -119,33 +123,33 @@ def Robot_command (user_input, link):
         return("Invalid axis, use 'x', 'y', 'z', or 'a'")
            
     if resp == "R:ESTOP":
-        return("E-stop triggered. Release button, then type: clr")
+        return(f"E-stop triggered. Release button, then type: clr to clear.")
                 
     if resp == "R:XSTOPPER_HIT":
-        return("X stopper hit! Move in opposite direction to back away.")
+        return(f"X stopper hit! Move in opposite direction to back away.")
                     
     if resp == "R:ERR xstopper_blocking":
-        return("X stopper is blocking this direction. Move in opposite direction.")
+        return(f"X stopper is blocking this direction. Move in opposite direction.")
                 
     if resp == "R:YSTOPPER_HIT":
-            return("Y stopper hit! Move in opposite direction to back away.")
+            return(f"Y stopper hit! Move in opposite direction to back away.")
                     
     if resp == "R:ERR ystopper_blocking":
-        return("Y stopper is blocking this direction. Move in opposite direction.")
+        return(f"Y stopper is blocking this direction. Move in opposite direction.")
                 
     if resp == "R:ZSTOPPER_HIT":
-        return("Z stopper hit! Move in opposite direction to back away.")
+        return(f"Z stopper hit! Move in opposite direction to back away.")
                     
     if resp == "R:ERR zstopper_blocking":
-        return("Z stopper is blocking this direction. Move in opposite direction.")
+        return(f"Z stopper is blocking this direction. Move in opposite direction.")
                 
     if resp == "R:ASTOPPER_HIT":
-        return("A stopper hit! Move in opposite direction to back away.")
+        return(f"A stopper hit! Move in opposite direction to back away.")
                     
     if resp == "R:ERR astopper_blocking":
-        return("A stopper is blocking this direction. Move in opposite direction.")
+        return(f"A stopper is blocking this direction. Move in opposite direction.")
 
-    return (resp)
+    return (f"{resp}")
 
     #print(wait_done(link, 10))
 

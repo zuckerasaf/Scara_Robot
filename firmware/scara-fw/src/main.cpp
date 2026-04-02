@@ -316,6 +316,7 @@ bool moveStepsAxis(const char* axisName, int stepPin, int dirPin, long steps, in
     digitalWrite(dirPin, (dir >= 0) ? HIGH : LOW);  // Normal for X, Y, Z
   }
 
+  //This line converts the motor speed (in steps per second) into a delay time (in microseconds) that should be waited between each step pulse.
   unsigned long delayUs = spsToDelayUs(speedSps);
 
   for (long i = 0; i < steps; i++) {
@@ -468,8 +469,8 @@ void loop()
     }
 
     // If no serial data available → do nothing
-    if (!Serial.available())
-        return;
+    if (!Serial.available()){return;}
+        
     // Read one full line until newline
     String line = Serial.readStringUntil('\n');
     // Remove whitespace, carriage returns, etc.
@@ -564,23 +565,16 @@ void loop()
     }
 
     // Ignore empty commands
-    if (line.length() == 0)
-        return;
-
-    // --------------------------------------------------------
-    // COMMAND: SYNC
-    // Used for handshake verification
-    // --------------------------------------------------------
+    if (line.length() == 0){return;}
+        
+    // COMMAND: SYNC to test communication and get ready signal
     if (line == "SYNC")
     {
         reply("READY");
         return;
     }
 
-    // --------------------------------------------------------
-    // COMMAND: ENA 1 / ENA 0
-    // Controls driver enable state
-    // --------------------------------------------------------
+    // COMMAND: ENA 1 / ENA 0 Controls driver enable state
     if (line == "ENA 1")
     {
         digitalWrite(EN_PIN, LOW);     // Enable drivers
@@ -618,10 +612,8 @@ void loop()
         // YSTEP <steps> <speed_sps> [dir]
     if (line.startsWith("YSTEP")) {
         long steps; unsigned int speed; int dir;
-
         String rest = line.substring(5); // after "YSTEP"
         if (!parseStepsSpeedDir(rest, steps, speed, dir)) return;
-
         reply("OK moving");
         bool ok = moveStepsAxis("Y",Y_STEP_PIN, Y_DIR_PIN, steps, dir, speed);
         if (ok) reply("OK done");
@@ -631,10 +623,8 @@ void loop()
     // ZSTEP <steps> <speed_sps> [dir]
     if (line.startsWith("ZSTEP")) {
         long steps; unsigned int speed; int dir;
-
         String rest = line.substring(5); // after "ZSTEP"
         if (!parseStepsSpeedDir(rest, steps, speed, dir)) return;
-
         reply("OK moving");
         bool ok = moveStepsAxis("Z",Z_STEP_PIN, Z_DIR_PIN, steps, dir, speed);
         if (ok) reply("OK done");
@@ -644,10 +634,8 @@ void loop()
     // ASTEP <steps> <speed_sps> [dir]
     if (line.startsWith("ASTEP")) {
         long steps; unsigned int speed; int dir;
-
         String rest = line.substring(5); // after "ASTEP"
         if (!parseStepsSpeedDir(rest, steps, speed, dir)) return;
-
         reply("OK moving");
         bool ok = moveStepsAxis("A",A_STEP_PIN, A_DIR_PIN, steps, dir, speed);
         if (ok) reply("OK done");
