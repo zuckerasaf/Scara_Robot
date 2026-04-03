@@ -844,6 +844,160 @@ class RobotController:
             self.log("[Zero] Failed to complete all zero movements")
             return False
     
+    def pull_up(self):
+        """
+        Execute PullUP sequence:
+        1. Grip to 92 degrees
+        2. Wait 3 seconds
+        3. Y axis 6 cm down
+        4. Wait until end of movement
+        5. Grip to 160 degrees
+        6. Wait 3 seconds
+        7. Y axis 6 cm up
+        
+        Returns:
+            bool: True if sequence completed successfully, False otherwise
+        """
+        if not self.link:
+            self.log("[PullUP] ERROR: Not connected to robot")
+            return False
+        
+        self.log("[PullUP] Starting PullUP sequence...")
+        
+        # Step 1: Set grip to 92 degrees
+        self.log("[PullUP] Step 1: Setting grip to 92°")
+        if not self.grip(92):
+            self.log("[PullUP] ERROR: Failed to set grip to 92°")
+            return False
+        
+        # Step 2: Wait 3 seconds
+        self.log("[PullUP] Step 2: Waiting 3 seconds...")
+        for i in range(10):  # 10 x 0.1s = 3 seconds
+            time.sleep(0.1)
+            if self.update_callback:
+                try:
+                    self.update_callback()
+                except:
+                    pass
+        
+        # Step 3: Y axis 6 cm down
+        # Y axis: 1000 steps per cm, so 6 cm = 6000 steps
+        # Down direction = negative
+        y_steps_per_cm = self.axis_steps_per_unit.get('Y', 1000)
+        y_down_steps = int(-6 * y_steps_per_cm)
+        y_speed = self.axis_config['axes']['Y'].get('default_speed', 1000)
+        
+        self.log(f"[PullUP] Step 3: Moving Y axis 6 cm down ({y_down_steps} steps)")
+        y_down_cmd = f"Y {y_down_steps} {y_speed}"
+        
+        # Execute Y down movement and wait for completion
+        result_down = self.execute_movement('Y', y_down_cmd)
+        
+        # Step 4: Wait until end of movement (already done by execute_movement)
+        if not result_down['success']:
+            self.log("[PullUP] ERROR: Y axis down movement failed")
+            return False
+        self.log("[PullUP] Step 4: Y axis down movement complete")
+        
+        # Step 5: Set grip to 160 degrees
+        self.log("[PullUP] Step 5: Setting grip to 160°")
+        if not self.grip(160):
+            self.log("[PullUP] ERROR: Failed to set grip to 160°")
+            return False
+        
+        # Step 6: Wait 3 seconds
+        self.log("[PullUP] Step 6: Waiting 3 seconds...")
+        for i in range(10):  # 10 x 0.1s = 1 second
+            time.sleep(0.1)
+            if self.update_callback:
+                try:
+                    self.update_callback()
+                except:
+                    pass
+        
+        # Step 7: Y axis 6 cm up
+        y_up_steps = int(6 * y_steps_per_cm)
+        self.log(f"[PullUP] Step 7: Moving Y axis 6 cm up ({y_up_steps} steps)")
+        y_up_cmd = f"Y {y_up_steps} {y_speed}"
+        
+        # Execute Y up movement and wait for completion
+        result_up = self.execute_movement('Y', y_up_cmd)
+        
+        if not result_up['success']:
+            self.log("[PullUP] ERROR: Y axis up movement failed")
+            return False
+        
+        self.log("[PullUP] ✓ PullUP sequence completed successfully")
+        return True
+    
+    def put_down(self):
+        """
+        Execute Put Down sequence:
+        1. Y axis 6 cm down
+        2. Wait until end of movement
+        3. Grip to 92 degrees
+        4. Wait 3 seconds
+        5. Y axis 6 cm up
+        
+        Returns:
+            bool: True if sequence completed successfully, False otherwise
+        """
+        if not self.link:
+            self.log("[PutDown] ERROR: Not connected to robot")
+            return False
+        
+        self.log("[PutDown] Starting Put Down sequence...")
+        
+        # Step 1: Y axis 6 cm down
+        # Y axis: 1000 steps per cm, so 6 cm = 6000 steps
+        # Down direction = negative
+        y_steps_per_cm = self.axis_steps_per_unit.get('Y', 1000)
+        y_down_steps = int(-6 * y_steps_per_cm)
+        y_speed = self.axis_config['axes']['Y'].get('default_speed', 1000)
+        
+        self.log(f"[PutDown] Step 1: Moving Y axis 6 cm down ({y_down_steps} steps)")
+        y_down_cmd = f"Y {y_down_steps} {y_speed}"
+        
+        # Execute Y down movement and wait for completion
+        result_down = self.execute_movement('Y', y_down_cmd)
+        
+        # Step 2: Wait until end of movement (already done by execute_movement)
+        if not result_down['success']:
+            self.log("[PutDown] ERROR: Y axis down movement failed")
+            return False
+        self.log("[PutDown] Step 2: Y axis down movement complete")
+        
+        # Step 3: Set grip to 92 degrees
+        self.log("[PutDown] Step 3: Setting grip to 92°")
+        if not self.grip(92):
+            self.log("[PutDown] ERROR: Failed to set grip to 92°")
+            return False
+        
+        # Step 4: Wait 3 seconds
+        self.log("[PutDown] Step 4: Waiting 3 seconds...")
+        for i in range(10):  # 10 x 0.1s = 3 seconds
+            time.sleep(0.1)
+            if self.update_callback:
+                try:
+                    self.update_callback()
+                except:
+                    pass
+        
+        # Step 5: Y axis 6 cm up
+        y_up_steps = int(6 * y_steps_per_cm)
+        self.log(f"[PutDown] Step 5: Moving Y axis 6 cm up ({y_up_steps} steps)")
+        y_up_cmd = f"Y {y_up_steps} {y_speed}"
+        
+        # Execute Y up movement and wait for completion
+        result_up = self.execute_movement('Y', y_up_cmd)
+        
+        if not result_up['success']:
+            self.log("[PutDown] ERROR: Y axis up movement failed")
+            return False
+        
+        self.log("[PutDown] ✓ Put Down sequence completed successfully")
+        return True
+    
     def cleanup(self):
         """Cleanup and close connections"""
         self.log("[System] Shutting down robot controller...")

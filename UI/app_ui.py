@@ -479,6 +479,34 @@ class ScaraMainWindow:
         )
         self.go_to_zero_button.pack(side=tk.LEFT, padx=5)
         
+        # PullUP button (initially disabled until zeroised)
+        self.pull_up_button = tk.Button(
+            button_frame,
+            text="PullUP",
+            font=('Arial', 10, 'bold'),
+            width=12,
+            height=2,
+            command=self.on_pull_up,
+            bg='#ffffcc',
+            activebackground='#ffffaa',
+            state=tk.DISABLED
+        )
+        self.pull_up_button.pack(side=tk.LEFT, padx=5)
+        
+        # Put Down button (initially disabled until zeroised)
+        self.put_down_button = tk.Button(
+            button_frame,
+            text="Put Down",
+            font=('Arial', 10, 'bold'),
+            width=12,
+            height=2,
+            command=self.on_put_down,
+            bg='#ffddcc',
+            activebackground='#ffccaa',
+            state=tk.DISABLED
+        )
+        self.put_down_button.pack(side=tk.LEFT, padx=5)
+        
         # Separator
         ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=15, padx=20)
         
@@ -928,10 +956,66 @@ class ScaraMainWindow:
             # Enable Move to Position button after successful zeroising
             self.move_to_position_button.config(state=tk.NORMAL)
             self.log("[System] Move to Position button ENABLED - robot zeroised ✓")
+            # Enable PullUP button after successful zeroising
+            self.pull_up_button.config(state=tk.NORMAL)
+            self.log("[System] PullUP button ENABLED - robot zeroised ✓")
+            # Enable Put Down button after successful zeroising
+            self.put_down_button.config(state=tk.NORMAL)
+            self.log("[System] Put Down button ENABLED - robot zeroised ✓")
         else:
             self.log("[Zero] ✗ Zeroising failed")
             # Keep Move to Position button disabled
             self.move_to_position_button.config(state=tk.DISABLED)
+            # Keep PullUP button disabled
+            self.pull_up_button.config(state=tk.DISABLED)
+            # Keep Put Down button disabled
+            self.put_down_button.config(state=tk.DISABLED)
+        
+        self.root.update()
+    
+    def on_pull_up(self):
+        """Handle PullUP button press - execute pick and place sequence."""
+        if not self.robot_controller.link:
+            self.log("[PullUP] ERROR: Not connected to robot")
+            self.root.update()
+            return
+        
+        self.log("[PullUP] Executing PullUP sequence...")
+        self.root.update()
+        
+        # Call controller method
+        success = self.robot_controller.pull_up()
+        
+        if success:
+            self.log("[PullUP] ✓ PullUP sequence completed successfully")
+        else:
+            self.log("[PullUP] ✗ PullUP sequence failed")
+        
+        # Update stopper status after movement
+        self.update_stopper_indicator('Y', self.robot_controller.Y_stopper_status)
+        
+        self.root.update()
+    
+    def on_put_down(self):
+        """Handle Put Down button press - execute place sequence."""
+        if not self.robot_controller.link:
+            self.log("[PutDown] ERROR: Not connected to robot")
+            self.root.update()
+            return
+        
+        self.log("[PutDown] Executing Put Down sequence...")
+        self.root.update()
+        
+        # Call controller method
+        success = self.robot_controller.put_down()
+        
+        if success:
+            self.log("[PutDown] ✓ Put Down sequence completed successfully")
+        else:
+            self.log("[PutDown] ✗ Put Down sequence failed")
+        
+        # Update stopper status after movement
+        self.update_stopper_indicator('Y', self.robot_controller.Y_stopper_status)
         
         self.root.update()
     
