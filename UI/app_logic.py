@@ -88,6 +88,64 @@ class RobotController:
         self.Z_homing_status = False
         self.A_homing_status = False
         
+        self.max_x_Angle = 80
+        self.max_z_Angle = 148
+
+        # Absolute position tracking (first IK solution)
+        self.absolute_position = {
+            'x_cm': 0.0,           # Current X position in cm from base
+            'y_cm': 0.0,           # Current Y position in cm from base
+            'x_angle_deg': 0.0,    # Current X axis angle in degrees
+            'z_angle_deg': 0.0,    # Current Z axis angle in degrees
+            'x_direction': 'CW',   # Current X direction
+            'z_direction': 'CW',   # Current Z direction
+            'distance': 0.0,       # Current distance from base in cm
+            'is_valid': False      # True after first successful move to position
+        }   
+        
+        # Secondary absolute position tracking (second IK solution)
+        self.sec_absolute_position = {
+            'x_cm': 0.0,           # Current X position in cm from base
+            'y_cm': 0.0,           # Current Y position in cm from base
+            'x_angle_deg': 0.0,    # Current X axis angle in degrees
+            'z_angle_deg': 0.0,    # Current Z axis angle in degrees
+            'x_direction': 'CW',   # Current X direction
+            'z_direction': 'CW',   # Current Z direction
+            'distance': 0.0,       # Current distance from base in cm
+            'is_valid': False      # True after first successful move to position
+        }
+        
+        # Movement angles (final angles to be executed)
+        self.movement_angles = {
+            'x_cm': 0.0,           # Target X position in cm
+            'y_cm': 0.0,           # Target Y position in cm
+            'x_angle_deg': 0.0,    # X axis movement angle in degrees
+            'z_angle_deg': 0.0,    # Z axis movement angle in degrees
+            'x_direction': 'CW',   # X movement direction
+            'z_direction': 'CW',   # Z movement direction
+            'distance': 0.0,       # Distance from base in cm
+            'is_valid': False      # True after movement angles are calculated
+        }
+        # Last position tracking (for inverse kinematics optimization)
+        self.last_position = {
+            'x_cm': 0.0,           # Last X position in cm
+            'y_cm': 0.0,           # Last Y position in cm
+            'x_angle_deg': 0.0,    # Last X axis angle in degrees
+            'z_angle_deg': 0.0,    # Last Z axis angle in degrees
+            'x_direction': 'CW',   # Last X direction
+            'z_direction': 'CW',   # Last Z direction
+            'distance': 0.0,       # Last distance from base
+            'is_valid': True      # True after first successful move to position
+        }
+        self.preferred_solution = {
+            'x_angle_deg': 0.0,    # Preferred X angle in degrees
+            'z_angle_deg': 0.0,    # Preferred Z angle in degrees
+            'x_direction': 'CW',   # Preferred X direction
+            'z_direction': 'CW',   # Preferred Z direction
+            'distance': 0.0,       # Distance from base in cm
+            'is_valid': False      # True if preferred solution is valid
+        }
+        
         # Load axis configuration
         self.axis_config = load_axis_config()
         
@@ -149,6 +207,23 @@ class RobotController:
         
         return default_speed, default_direction, default_steps_per_unit, min_limit, max_limit
     
+    def get_last_position(self):
+        """
+        Get the last known position of the robot.
+        
+        Returns:
+            dict: Last position data containing:
+                - x_cm: Last X position in cm
+                - y_cm: Last Y position in cm
+                - x_angle_deg: Last X axis angle in degrees
+                - z_angle_deg: Last Z axis angle in degrees
+                - x_direction: Last X direction ('CW' or 'CCW')
+                - z_direction: Last Z direction ('CW' or 'CCW')
+                - distance: Last distance from base in cm
+                - is_valid: True if position has been set, False if no valid position yet
+        """
+        return self.last_position.copy()
+    
     def reset_remain_limits(self):
         """Reset remain limits to original values from configuration."""
         for axis in ['X', 'Y', 'Z', 'A']:
@@ -160,6 +235,10 @@ class RobotController:
     def inverse_kinematics(self, target_x_cm, target_y_cm):
         """
         Calculate inverse kinematics for 2-link SCARA arm.
+        
+        Calculates both absolute target angles and relative movements from last position.
+        If a valid last position exists, returns the relative movement needed.
+        Otherwise, returns absolute movement from zero position.
         
         Base coordinate system (shoulder joint at origin):
         - Origin (0,0) at shoulder joint (base of robot)
@@ -173,16 +252,21 @@ class RobotController:
         Returns:
             dict: {
                 'success': bool,
-                'x_angle_deg': float,  # X axis angle in degrees (from vertical)
-                'z_angle_deg': float,  # Z axis angle in degrees (from L1)
-                'x_angle_direction': str,  # X axis rotation direction ("CW" or "CCW")
-                'z_angle_direction': str,  # Z axis rotation direction ("CW" or "CCW")
+                'x_angle_deg': float,  # Movement angle to execute (relative or absolute)
+                'z_angle_deg': float,  # Movement angle to execute (relative or absolute)
+                'x_angle_direction': str,  # Movement direction ("CW" or "CCW")
+                'z_angle_direction': str,  # Movement direction ("CW" or "CCW")
+                'absolute_x_angle_deg': float,  # Target absolute position angle
+                'absolute_z_angle_deg': float,  # Target absolute position angle
+                'absolute_x_direction': str,    # Target absolute direction
+                'absolute_z_direction': str,    # Target absolute direction
                 'x_steps': int,        # X axis movement in steps
                 'z_steps': int,        # Z axis movement in steps
                 'message': str         # Status or error message
             }
         """
         # Get robot geometry from config
+        quater = 1
         if not self.axis_config or 'robot_geometry' not in self.axis_config:
             return {
                 'success': False,
@@ -239,46 +323,168 @@ class RobotController:
                 'z_steps': 0,
                 'message': f'Target too close! Distance from base: {r:.2f}cm, Min reach: {min_reach:.2f}cm'
             }
-        # calculate shoulder angle (Z axis) using law of cosines
+        # calculate the absulte triangle angels using law of cosines
         shoulder_angle_deg =  math.degrees(math.acos((r**2 + L1**2 - L2**2) / (2 * L1 * r)))
         elbow_angle_deg = math.degrees(math.acos((L1**2 + L2**2 - r**2) / (2 * L1 * L2)))
         target_angle_deg = 180 - shoulder_angle_deg - elbow_angle_deg
-
-        shoulder_angle_from_horizontal_deg = math.degrees(math.acos(target_x_cm/r))
-        other_shoulder_angle_from_horizontal_deg = 180 - shoulder_angle_from_horizontal_deg - shoulder_angle_deg
-        movmet_sholder_angle_deg = 90 - other_shoulder_angle_from_horizontal_deg
-
-        if movmet_sholder_angle_deg < 0:
-            movmet_sholder_angle_deg = abs(movmet_sholder_angle_deg)
-            shoulder_direction = "CW"  
+        
+        
+        # claluclate the shoulder movmnent 
+        shoulder_angle_for_X_Axis = math.degrees(math.acos(target_x_cm/r))
+        sholder_angle_for_y_Axis = math.degrees(math.acos(target_y_cm/r))
+        shoulder_movment_angle_for_Y_Axis = 90 - shoulder_angle_for_X_Axis - shoulder_angle_deg
+        seco_shoulder_movment_angle_for_Y_Axis = shoulder_movment_angle_for_Y_Axis + 2 * shoulder_angle_deg
+        if shoulder_movment_angle_for_Y_Axis >= 0:
+            x_angle_direction = "CW"
         else:
-            movmet_sholder_angle_deg = abs(movmet_sholder_angle_deg)
-            shoulder_direction = "CCW"
-
-        Traget_angle_from_vertical_deg = 90-shoulder_angle_from_horizontal_deg
-        other_target_angle_from_vertical_deg = 90 - target_angle_deg-Traget_angle_from_vertical_deg
-        movment_elbow_angle_deg = 90 - other_target_angle_from_vertical_deg
-
-        if movment_elbow_angle_deg < 0:
-            movment_elbow_angle_deg = abs(movment_elbow_angle_deg)
-            elbow_direction = "CW"
+            x_angle_direction = "CCW"
+        if seco_shoulder_movment_angle_for_Y_Axis >= 0:
+            x_sec_angle_direction = "CW"
         else:
-            movment_elbow_angle_deg = abs(movment_elbow_angle_deg)
-            elbow_direction = "CW" 
+            x_sec_angle_direction = "CCW"
+
+
+        # claluclate the elbow movmnent 
+        shoulder_angle_deg = 180 - elbow_angle_deg
+    
+        z_angle_direction = "CW"
+        z_sec_angle_direction = "CCW"
+
+
+        # Update absolute_position dictionary (first IK solution)
+        self.absolute_position['x_cm'] = target_x_cm
+        self.absolute_position['y_cm'] = target_y_cm
+        self.absolute_position['x_angle_deg'] = abs(shoulder_movment_angle_for_Y_Axis)
+        self.absolute_position['x_direction'] = x_angle_direction
+        self.absolute_position['z_angle_deg'] = shoulder_angle_deg
+        self.absolute_position['z_direction'] = z_angle_direction
+        self.absolute_position['distance'] = r
+        self.absolute_position['is_valid'] = True
+
+        if self.absolute_position['x_angle_deg']  >  self.max_x_Angle:
+            self.absolute_position['is_valid'] = False
+            self.log(f"[IK DEBUG] First solution INVALID: X angle {self.absolute_position['x_angle_deg']:.2f}° > max {self.max_x_Angle}°")
+        if self.absolute_position['z_angle_deg']  >  self.max_z_Angle:
+            self.absolute_position['is_valid'] = False
+            self.log(f"[IK DEBUG] First solution INVALID: Z angle {self.absolute_position['z_angle_deg']:.2f}° > max {self.max_z_Angle}°")
+
+
+        # Update sec_absolute_position dictionary (second IK solution - shoulder on the right)
+        self.sec_absolute_position['x_cm'] = target_x_cm
+        self.sec_absolute_position['y_cm'] = target_y_cm
+        self.sec_absolute_position['x_angle_deg'] = abs(seco_shoulder_movment_angle_for_Y_Axis)
+        self.sec_absolute_position['x_direction'] = x_sec_angle_direction
+        self.sec_absolute_position['z_angle_deg'] = shoulder_angle_deg
+        self.sec_absolute_position['z_direction'] = z_sec_angle_direction
+        self.sec_absolute_position['distance'] = r
+        self.sec_absolute_position['is_valid'] = True
+
+        if self.sec_absolute_position['x_angle_deg']  >  self.max_x_Angle:
+            self.sec_absolute_position['is_valid'] = False
+            self.log(f"[IK DEBUG] Second solution INVALID: X angle {self.sec_absolute_position['x_angle_deg']:.2f}° > max {self.max_x_Angle}°")
+        if self.sec_absolute_position['z_angle_deg']  >  self.max_z_Angle:
+            self.sec_absolute_position['is_valid'] = False
+            self.log(f"[IK DEBUG] Second solution INVALID: Z angle {self.sec_absolute_position['z_angle_deg']:.2f}° > max {self.max_z_Angle}°")
+
+
+        self.log(f"[IK DEBUG] first solution : absolute_x_angle: {self.absolute_position['x_angle_deg']:.2f}° ({self.absolute_position['x_direction']}), absolute_z_angle: {self.absolute_position['z_angle_deg']:.2f}° ({self.absolute_position['z_direction']}), is_valid={self.absolute_position['is_valid']}")
+        self.log(f"[IK DEBUG] second solution : absolute_x_angle: {self.sec_absolute_position['x_angle_deg']:.2f}° ({self.sec_absolute_position['x_direction']}), absolute_z_angle: {self.sec_absolute_position['z_angle_deg']:.2f}° ({self.sec_absolute_position['z_direction']}), is_valid={self.sec_absolute_position['is_valid']}")
+        
+
+        if self.absolute_position['is_valid'] ==True:
+            self.preferred_solution['x_angle_deg'] = self.absolute_position['x_angle_deg']
+            self.preferred_solution['x_direction'] = self.absolute_position['x_direction']
+            self.preferred_solution['z_angle_deg'] = self.absolute_position['z_angle_deg']
+            self.preferred_solution['z_direction'] = self.absolute_position['z_direction']
+            self.preferred_solution['distance'] = self.absolute_position['distance']
+            self.preferred_solution['is_valid'] = True
+        elif self.sec_absolute_position['is_valid'] ==True and self.absolute_position['is_valid'] ==False:
+            self.preferred_solution['x_angle_deg'] = self.sec_absolute_position['x_angle_deg']
+            self.preferred_solution['x_direction'] = self.sec_absolute_position['x_direction']
+            self.preferred_solution['z_angle_deg'] = self.sec_absolute_position['z_angle_deg']
+            self.preferred_solution['z_direction'] = self.sec_absolute_position['z_direction']
+            self.preferred_solution['distance'] = self.sec_absolute_position['distance']
+            self.preferred_solution['is_valid'] = True
+        else:
+            self.preferred_solution['x_angle_deg'] = 0.0
+            self.preferred_solution['x_direction'] = "CW"
+            self.preferred_solution['z_angle_deg'] = 0.0
+            self.preferred_solution['z_direction'] = "CW"
+            self.preferred_solution['distance'] = r
+            self.preferred_solution['is_valid'] = False
 
 
 
-        self.log(f"[IK DEBUG] movment shoulder angle from horizontal: {movmet_sholder_angle_deg:.2f}° ({shoulder_direction}), movement elbow angle: {movment_elbow_angle_deg:.2f}° ({elbow_direction})")
+
+        # Calculate relative movement from last position if available
+        if self.last_position['is_valid'] and self.preferred_solution['is_valid']:
+            self.log(f"[IK] Last position valid - calculating relative movement")
+            self.log(f"[IK] Last X: {self.last_position['x_angle_deg']:.2f}° {self.last_position['x_direction']}, Last Z: {self.last_position['z_angle_deg']:.2f}° {self.last_position['z_direction']}")
+            
+            # Calculate absolute positions (converting to signed values)
+            # CW is positive, CCW is negative for calculation purposes
+            last_x_absolute = self.last_position['x_angle_deg'] if self.last_position['x_direction'] == 'CW' else -self.last_position['x_angle_deg']
+            last_z_absolute = self.last_position['z_angle_deg'] if self.last_position['z_direction'] == 'CW' else -self.last_position['z_angle_deg']
+            
+            new_x_absolute =  self.preferred_solution['x_angle_deg'] if self.preferred_solution['x_direction'] == 'CW' else -self.preferred_solution['x_angle_deg']
+            new_z_absolute = self.preferred_solution['z_angle_deg'] if self.preferred_solution['z_direction'] == 'CW' else -self.preferred_solution['z_angle_deg']
+            
+            # Calculate differences (relative movement needed)
+            x_diff = new_x_absolute - last_x_absolute
+            z_diff = new_z_absolute - last_z_absolute
+            
+            # Convert back to magnitude and direction
+            x_relative_magnitude = abs(x_diff)
+            x_relative_direction = 'CW' if x_diff >= 0 else 'CCW'
+            
+            z_relative_magnitude = abs(z_diff)
+            z_relative_direction = 'CW' if z_diff >= 0 else 'CCW'
+            
+            self.log(f"[IK] Relative movement - X: {x_relative_magnitude:.2f}° {x_relative_direction}, Z: {z_relative_magnitude:.2f}° {z_relative_direction}")
+            
+            # Use relative movements for execution
+            final_x_angle = x_relative_magnitude
+            final_x_direction = x_relative_direction
+            final_z_angle = z_relative_magnitude
+            final_z_direction = z_relative_direction
+            message_prefix = "Relative"
+           
+
+        else:
+            # No valid last position - use absolute movements
+            self.log(f"[IK] No valid last position - using absolute movement from zero")
+            final_x_angle = self.preferred_solution['x_angle_deg']
+            final_x_direction = self.preferred_solution['x_direction']
+            final_z_angle = self.preferred_solution['z_angle_deg']
+            final_z_direction = self.preferred_solution['z_direction']
+            message_prefix = "Absolute"
+        
+        # Note: Do not update last_position here!
+        # It should only be updated by move_to_position() after successful movement
+        
+        # Update movement_angles dictionary with final calculated movement
+        self.movement_angles['x_cm'] = target_x_cm
+        self.movement_angles['y_cm'] = target_y_cm
+        self.movement_angles['x_angle_deg'] = final_x_angle
+        self.movement_angles['x_direction'] = final_x_direction
+        self.movement_angles['z_angle_deg'] = final_z_angle
+        self.movement_angles['z_direction'] = final_z_direction
+        self.movement_angles['distance'] = r
+        self.movement_angles['is_valid'] = True
 
         return {
                 'success': True,
-                'x_angle_deg': movmet_sholder_angle_deg,
-                'z_angle_deg': movment_elbow_angle_deg,
-                'x_angle_direction': shoulder_direction,
-                'z_angle_direction': elbow_direction,
+                'x_angle_deg': final_x_angle,                    # Movement angle to execute
+                'z_angle_deg': final_z_angle,                    # Movement angle to execute
+                'x_angle_direction': final_x_direction,          # Movement direction to execute
+                'z_angle_direction': final_z_direction,          # Movement direction to execute
+                'absolute_x_angle_deg': self.absolute_position['x_angle_deg'],        # Target absolute position
+                'absolute_z_angle_deg': self.absolute_position['z_angle_deg'],        # Target absolute position
+                'absolute_x_direction': self.absolute_position['x_direction'],    # Target absolute direction
+                'absolute_z_direction': self.absolute_position['z_direction'],    # Target absolute direction
                 'x_steps': 0,
                 'z_steps': 0,
-                'message': f'IK Success: X={movmet_sholder_angle_deg:.2f}° (from vertical, {shoulder_direction}), Z={movment_elbow_angle_deg:.2f}° (from vertical, {elbow_direction})'
+                'message': f'IK Success ({message_prefix}): X={final_x_angle:.2f}° ({final_x_direction}), Z={final_z_angle:.2f}° ({final_z_direction})'
             }
         # # Calculate elbow angle (Z axis) using law of cosines
         # # cos(θ2) = (r² - L1² - L2²) / (-2 * L1 * L2)
@@ -598,33 +804,95 @@ class RobotController:
         y_steps_per_cm = self.axis_steps_per_unit.get('Y', 1000)
         y_steps = y_zero_steps + int(target_y_cm * y_steps_per_cm)
         
-        self.log(f"[IK] Y-axis: {target_y_cm:.2f}cm from zero = {y_steps} steps (zero={y_zero_steps} + {target_y_cm}*{y_steps_per_cm})")
         
         # Use default speeds if not specified
         if speed is None:
             x_speed = self.axis_config['axes']['X'].get('default_speed', 1000)
-            y_speed = self.axis_config['axes']['Y'].get('default_speed', 1000)
             z_speed = self.axis_config['axes']['Z'].get('default_speed', 1000)
         else:
             x_speed = y_speed = z_speed = speed
         
-        # Create movement commands
-        x_cmd = f"X {ik_result['x_steps']} {x_speed}"
-        y_cmd = f"Y {y_steps} {y_speed}"
-        z_cmd = f"Z {ik_result['z_steps']} {z_speed}"
+        # Clear any existing X and Z commands
+        self.update_axis_command('X', "")
+        self.update_axis_command('Z', "")
         
-        # Update axis commands
-        self.update_axis_command('X', x_cmd)
-        self.update_axis_command('Y', y_cmd)
-        self.update_axis_command('Z', z_cmd)
+        # Get movement angles and directions from IK result
+        x_angle_deg = ik_result['x_angle_deg']
+        z_angle_deg = ik_result['z_angle_deg']
+        x_direction = ik_result['x_angle_direction']
+        z_direction = ik_result['z_angle_direction']
+
+        #building X command with direction
+        if x_direction == "CW":
+            x_movement_value = int(float(x_angle_deg) * self.axis_steps_per_unit.get('X', 1)   )
+        else:
+            x_movement_value = int(float(x_angle_deg) * self.axis_steps_per_unit.get('X', 1)   ) * (-1)
         
-        # Execute all movements (X, Y, Z will move; A remains empty)
-        results = self.execute_all_movements()
+        #building Z command with direction
+        if z_direction == "CW":
+            z_movement_value = int(float(z_angle_deg) * self.axis_steps_per_unit.get('Z', 1)   )    
+        else:
+            z_movement_value = int(float(z_angle_deg) * self.axis_steps_per_unit.get('Z', 1)   ) * (-1)
         
-        # Add results to IK result
-        ik_result['movement_results'] = results
+        # Only create commands for non-zero movements
+        if x_movement_value != 0:
+            x_cmd = f"X {x_movement_value} {x_speed}"
+            self.update_axis_command('X', x_cmd)
+            self.log(f"[IK] X movement command: '{x_cmd}'")
+        else:
+            self.log(f"[IK] X movement skipped (0 steps)")
         
-        return ik_result
+        if z_movement_value != 0:
+            z_cmd = f"Z {z_movement_value} {z_speed}"
+            self.update_axis_command('Z', z_cmd)
+            self.log(f"[IK] Z movement command: '{z_cmd}'")
+        else:
+            self.log(f"[IK] Z movement skipped (0 steps)")
+
+
+        # Execute all movements (only non-zero commands will execute)
+        movement_results = self.execute_all_movements()
+        
+        # Check if all movements were successful
+        # If no movements (all 0), consider it a success
+        if len(movement_results) == 0:
+            all_success = True
+            self.log("[IK] No movement needed - already at target position")
+        else:
+            all_success = all(result.get('success', False) for result in movement_results.values())
+        
+        # Update last position ONLY if movement was successful
+        # Use the preferred_solution (the one that was actually used for movement)
+        if all_success:
+            self.last_position['x_cm'] = target_x_cm
+            self.last_position['y_cm'] = target_y_cm
+            self.last_position['x_angle_deg'] = self.preferred_solution['x_angle_deg']
+            self.last_position['z_angle_deg'] = self.preferred_solution['z_angle_deg']
+            self.last_position['x_direction'] = self.preferred_solution['x_direction']
+            self.last_position['z_direction'] = self.preferred_solution['z_direction']
+            self.last_position['distance'] = self.preferred_solution['distance']
+            self.last_position['is_valid'] = True
+            
+            self.log(f"[IK] Last position updated: ({target_x_cm:.2f}, {target_y_cm:.2f}) cm")
+            self.log(f"[IK] Preferred solution stored: X={self.last_position['x_angle_deg']:.2f}° {self.last_position['x_direction']}, Z={self.last_position['z_angle_deg']:.2f}° {self.last_position['z_direction']}")
+        
+        # Return combined result with IK data and movement results
+        # Use the movement angles/directions for display (these are what was executed)
+        return {
+            'success': all_success,
+            'x_angle_deg': ik_result['x_angle_deg'],              # Relative movement executed
+            'z_angle_deg': ik_result['z_angle_deg'],              # Relative movement executed
+            'x_angle_direction': ik_result['x_angle_direction'],  # Movement direction
+            'z_angle_direction': ik_result['z_angle_direction'],  # Movement direction
+            'absolute_x_angle_deg': ik_result.get('absolute_x_angle_deg', ik_result['x_angle_deg']),
+            'absolute_z_angle_deg': ik_result.get('absolute_z_angle_deg', ik_result['z_angle_deg']),
+            'absolute_x_direction': ik_result.get('absolute_x_direction', ik_result['x_angle_direction']),
+            'absolute_z_direction': ik_result.get('absolute_z_direction', ik_result['z_angle_direction']),
+            'x_steps': ik_result['x_steps'],
+            'z_steps': ik_result['z_steps'],
+            'message': 'Movement completed successfully' if all_success else 'Movement failed',
+            'movement_results': movement_results
+        }
     
     def test_inverse_kinematics(self, target_x_cm, target_y_cm):
         """
@@ -839,6 +1107,58 @@ class RobotController:
         
         if all_success and len(results) == 4:
             self.log("[Zero] Successfully moved to zero position")
+            
+            # Reset all position tracking dictionaries to initial state
+            # Last position: Set to (0, 0) at zero position (valid)
+            self.last_position['x_cm'] = 0.0
+            self.last_position['y_cm'] = 0.0
+            self.last_position['x_angle_deg'] = 0.0
+            self.last_position['z_angle_deg'] = 0.0
+            self.last_position['x_direction'] = 'CW'
+            self.last_position['z_direction'] = 'CW'
+            self.last_position['distance'] = 0.0
+            self.last_position['is_valid'] = True
+            
+            # Absolute position: Reset to initial state (invalid/not calculated)
+            self.absolute_position['x_cm'] = 0.0
+            self.absolute_position['y_cm'] = 0.0
+            self.absolute_position['x_angle_deg'] = 0.0
+            self.absolute_position['z_angle_deg'] = 0.0
+            self.absolute_position['x_direction'] = 'CW'
+            self.absolute_position['z_direction'] = 'CW'
+            self.absolute_position['distance'] = 0.0
+            self.absolute_position['is_valid'] = False
+            
+            # Secondary absolute position: Reset to initial state (invalid/not calculated)
+            self.sec_absolute_position['x_cm'] = 0.0
+            self.sec_absolute_position['y_cm'] = 0.0
+            self.sec_absolute_position['x_angle_deg'] = 0.0
+            self.sec_absolute_position['z_angle_deg'] = 0.0
+            self.sec_absolute_position['x_direction'] = 'CW'
+            self.sec_absolute_position['z_direction'] = 'CW'
+            self.sec_absolute_position['distance'] = 0.0
+            self.sec_absolute_position['is_valid'] = False
+            
+            # Movement angles: Reset to initial state (invalid/not calculated)
+            self.movement_angles['x_cm'] = 0.0
+            self.movement_angles['y_cm'] = 0.0
+            self.movement_angles['x_angle_deg'] = 0.0
+            self.movement_angles['z_angle_deg'] = 0.0
+            self.movement_angles['x_direction'] = 'CW'
+            self.movement_angles['z_direction'] = 'CW'
+            self.movement_angles['distance'] = 0.0
+            self.movement_angles['is_valid'] = False
+            
+            # Preferred solution: Reset to initial state (invalid/not calculated)
+            self.preferred_solution['x_angle_deg'] = 0.0
+            self.preferred_solution['x_direction'] = 'CW'
+            self.preferred_solution['z_angle_deg'] = 0.0
+            self.preferred_solution['z_direction'] = 'CW'
+            self.preferred_solution['distance'] = 0.0
+            self.preferred_solution['is_valid'] = False
+            
+            self.log("[Zero] All position calculations reset to initial state")
+            
             return True
         else:
             self.log("[Zero] Failed to complete all zero movements")
@@ -871,8 +1191,8 @@ class RobotController:
             return False
         
         # Step 2: Wait 3 seconds
-        self.log("[PullUP] Step 2: Waiting 3 seconds...")
-        for i in range(10):  # 10 x 0.1s = 3 seconds
+        self.log("[PullUP] Step 2: Waiting 2 seconds...")
+        for i in range(20):  # 10 x 0.1s = 2 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -906,8 +1226,8 @@ class RobotController:
             return False
         
         # Step 6: Wait 3 seconds
-        self.log("[PullUP] Step 6: Waiting 3 seconds...")
-        for i in range(10):  # 10 x 0.1s = 1 second
+        self.log("[PullUP] Step 6: Waiting 2 seconds...")
+        for i in range(20):  # 10 x 0.1s = 2 second
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -974,8 +1294,8 @@ class RobotController:
             return False
         
         # Step 4: Wait 3 seconds
-        self.log("[PutDown] Step 4: Waiting 3 seconds...")
-        for i in range(10):  # 10 x 0.1s = 3 seconds
+        self.log("[PutDown] Step 4: Waiting 2 seconds...")
+        for i in range(20):  # 10 x 0.1s = 2 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:

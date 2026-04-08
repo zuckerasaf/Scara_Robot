@@ -407,9 +407,15 @@ class ScaraMainWindow:
         # Separator
         ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=20, padx=20)
         
-        # Results display
-        results_frame = tk.LabelFrame(panel, text="Calculated Angles", bg='#ffffff', font=('Arial', 9, 'bold'))
-        results_frame.pack(fill=tk.X, padx=20, pady=10)
+        # First row: Calculated Angles and Sec calculated angles side by side
+        first_row_container = tk.Frame(panel, bg='#ffffff')
+        first_row_container.pack(fill=tk.X, padx=20, pady=10)
+        first_row_container.columnconfigure(0, weight=1)
+        first_row_container.columnconfigure(1, weight=1)
+        
+        # Calculated Angles (left side)
+        results_frame = tk.LabelFrame(first_row_container, text="Calculated Angles", bg='#ffffff', font=('Arial', 9, 'bold'))
+        results_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
         
         # X angle display
         x_angle_row = tk.Frame(results_frame, bg='#ffffff')
@@ -431,6 +437,87 @@ class ScaraMainWindow:
         tk.Label(dist_row, text="Distance:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
         self.ik_dist_label = tk.Label(dist_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9), fg='#666666')
         self.ik_dist_label.pack(side=tk.LEFT, padx=5)
+        
+        # Sec calculated angles (right side)
+        sec_results_frame = tk.LabelFrame(first_row_container, text="Sec calculated angles", bg='#ffffff', font=('Arial', 9, 'bold'))
+        sec_results_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        
+        # Sec X angle display
+        sec_x_angle_row = tk.Frame(sec_results_frame, bg='#ffffff')
+        sec_x_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(sec_x_angle_row, text="X Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.sec_x_angle_label = tk.Label(sec_x_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#cc6600')
+        self.sec_x_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Sec Z angle display
+        sec_z_angle_row = tk.Frame(sec_results_frame, bg='#ffffff')
+        sec_z_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(sec_z_angle_row, text="Z Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.sec_z_angle_label = tk.Label(sec_z_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#cc6600')
+        self.sec_z_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Sec distance display
+        sec_dist_row = tk.Frame(sec_results_frame, bg='#ffffff')
+        sec_dist_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(sec_dist_row, text="Distance:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.sec_dist_label = tk.Label(sec_dist_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9), fg='#999966')
+        self.sec_dist_label.pack(side=tk.LEFT, padx=5)
+        
+        # Second row: Movement angles and Last position side by side
+        second_row_container = tk.Frame(panel, bg='#ffffff')
+        second_row_container.pack(fill=tk.X, padx=20, pady=10)
+        second_row_container.columnconfigure(0, weight=1)
+        second_row_container.columnconfigure(1, weight=1)
+        
+        # Movement angles (left side)
+        movement_frame = tk.LabelFrame(second_row_container, text="Movement angles", bg='#ffffff', font=('Arial', 9, 'bold'))
+        movement_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        
+        # Movement X angle display
+        mov_x_angle_row = tk.Frame(movement_frame, bg='#ffffff')
+        mov_x_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(mov_x_angle_row, text="X Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.mov_x_angle_label = tk.Label(mov_x_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#00aa00')
+        self.mov_x_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Movement Z angle display
+        mov_z_angle_row = tk.Frame(movement_frame, bg='#ffffff')
+        mov_z_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(mov_z_angle_row, text="Z Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.mov_z_angle_label = tk.Label(mov_z_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#00aa00')
+        self.mov_z_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Movement distance display
+        mov_dist_row = tk.Frame(movement_frame, bg='#ffffff')
+        mov_dist_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(mov_dist_row, text="Distance:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.mov_dist_label = tk.Label(mov_dist_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9), fg='#669966')
+        self.mov_dist_label.pack(side=tk.LEFT, padx=5)
+        
+        # Last position (right side)
+        last_pos_frame = tk.LabelFrame(second_row_container, text="Last position", bg='#ffffff', font=('Arial', 9, 'bold'))
+        last_pos_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        
+        # Last X angle display
+        last_x_angle_row = tk.Frame(last_pos_frame, bg='#ffffff')
+        last_x_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(last_x_angle_row, text="X Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.last_x_angle_label = tk.Label(last_x_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#886600')
+        self.last_x_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Last Z angle display
+        last_z_angle_row = tk.Frame(last_pos_frame, bg='#ffffff')
+        last_z_angle_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(last_z_angle_row, text="Z Axis Angle:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.last_z_angle_label = tk.Label(last_z_angle_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9, 'bold'), fg='#886600')
+        self.last_z_angle_label.pack(side=tk.LEFT, padx=5)
+        
+        # Last distance display
+        last_dist_row = tk.Frame(last_pos_frame, bg='#ffffff')
+        last_dist_row.pack(fill=tk.X, pady=3, padx=10)
+        tk.Label(last_dist_row, text="Distance:", width=12, anchor='w', bg='#ffffff', font=('Arial', 9)).pack(side=tk.LEFT)
+        self.last_dist_label = tk.Label(last_dist_row, text="--", width=15, anchor='w', bg='#ffffff', font=('Arial', 9), fg='#888888')
+        self.last_dist_label.pack(side=tk.LEFT, padx=5)
         
         # Separator
         ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=20, padx=20)
@@ -611,16 +698,21 @@ class ScaraMainWindow:
         button_frame = tk.Frame(parent, bg='#f5f5f5')
         button_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(5, 5))
         
+        # Configure equal weight for all columns to spread buttons evenly
+        for i in range(6):
+            button_frame.columnconfigure(i, weight=1, uniform='button')
+        
         button_config = {
             'width': 12,
             'height': 2,
             'font': ('Arial', 10)
         }
         
-        tk.Button(button_frame, text="Exit", command=self.on_exit, bg='#ffcccc', activebackground='#ffaaaa', **button_config).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Home", command=self.on_home, bg='#ccffcc', activebackground='#aaffaa', **button_config).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="Estop", command=self.on_estop, bg='#ffcccc', activebackground='#ffaaaa', **button_config).pack(side=tk.LEFT, padx=5)
-        tk.Button(button_frame, text="CLR", command=self.on_clr, bg='#ffffcc', activebackground='#ffffaa', **button_config).pack(side=tk.LEFT, padx=5)
+        # Use grid layout for even distribution
+        tk.Button(button_frame, text="Exit", command=self.on_exit, bg='#ffcccc', activebackground='#ffaaaa', **button_config).grid(row=0, column=0, padx=5, pady=0, sticky='ew')
+        tk.Button(button_frame, text="Home", command=self.on_home, bg='#ccffcc', activebackground='#aaffaa', **button_config).grid(row=0, column=1, padx=5, pady=0, sticky='ew')
+        tk.Button(button_frame, text="Estop", command=self.on_estop, bg='#ffcccc', activebackground='#ffaaaa', **button_config).grid(row=0, column=2, padx=5, pady=0, sticky='ew')
+        tk.Button(button_frame, text="CLR", command=self.on_clr, bg='#ffffcc', activebackground='#ffffaa', **button_config).grid(row=0, column=3, padx=5, pady=0, sticky='ew')
         
         # Tech button with toggle state
         self.tech_button = tk.Button(
@@ -631,9 +723,9 @@ class ScaraMainWindow:
             activebackground='#d0d0d0',
             **button_config
         )
-        self.tech_button.pack(side=tk.LEFT, padx=5)
+        self.tech_button.grid(row=0, column=4, padx=5, pady=0, sticky='ew')
         
-        tk.Button(button_frame, text="Sync", command=self.on_sync, bg='#ccddff', activebackground='#aaccff', **button_config).pack(side=tk.LEFT, padx=5)
+        tk.Button(button_frame, text="Sync", command=self.on_sync, bg='#ccddff', activebackground='#aaccff', **button_config).grid(row=0, column=5, padx=5, pady=0, sticky='ew')
     
     def create_log_panel(self, parent):
         """Create log panel at the bottom."""
@@ -676,6 +768,121 @@ class ScaraMainWindow:
             self.log("[System] Go to Zero button ENABLED - all axes homed ✓")
         else:
             self.go_to_zero_button.config(state=tk.DISABLED)
+    
+    def update_last_position_display(self):
+        """Update last position display from robot controller."""
+        last_pos = self.robot_controller.last_position
+        
+        if last_pos['is_valid']:
+            # Update labels with last position data
+            self.last_x_angle_label.config(
+                text=f"{last_pos['x_angle_deg']:.2f}° ({last_pos['x_direction']})",
+                fg='#886600'
+            )
+            self.last_z_angle_label.config(
+                text=f"{last_pos['z_angle_deg']:.2f}° ({last_pos['z_direction']})",
+                fg='#886600'
+            )
+            self.last_dist_label.config(
+                text=f"{last_pos['distance']:.2f} cm",
+                fg='#888888'
+            )
+        else:
+            # No valid position yet
+            self.last_x_angle_label.config(text="--", fg='#ff0000')
+            self.last_z_angle_label.config(text="--", fg='#ff0000')
+            self.last_dist_label.config(text="--", fg='#ff0000')
+        
+        self.root.update()
+    
+    def update_calculated_angles_display(self):
+        """Update calculated angles display from robot controller."""
+        abs_pos = self.robot_controller.absolute_position
+        
+        # Check if data has been calculated (distance > 0 means calculation was done)
+        if abs_pos['distance'] > 0:
+            # Pick color based on validity
+            color = '#0066cc' if abs_pos['is_valid'] else '#ff0000'
+            
+            # Always show the values, use red for invalid (out of range)
+            self.ik_x_angle_label.config(
+                text=f"{abs_pos['x_angle_deg']:.2f}° ({abs_pos['x_direction']})",
+                fg=color
+            )
+            self.ik_z_angle_label.config(
+                text=f"{abs_pos['z_angle_deg']:.2f}° ({abs_pos['z_direction']})",
+                fg=color
+            )
+            self.ik_dist_label.config(
+                text=f"{abs_pos['distance']:.2f} cm",
+                fg='#666666'
+            )
+        else:
+            # No calculation done yet
+            self.ik_x_angle_label.config(text="--", fg='#cccccc')
+            self.ik_z_angle_label.config(text="--", fg='#cccccc')
+            self.ik_dist_label.config(text="--", fg='#cccccc')
+        
+        self.root.update()
+    
+    def update_sec_calculated_angles_display(self):
+        """Update secondary calculated angles display from robot controller."""
+        sec_pos = self.robot_controller.sec_absolute_position
+        
+        # Check if data has been calculated (distance > 0 means calculation was done)
+        if sec_pos['distance'] > 0:
+            # Pick color based on validity
+            color = '#cc6600' if sec_pos['is_valid'] else '#ff0000'
+            
+            # Always show the values, use red for invalid (out of range)
+            self.sec_x_angle_label.config(
+                text=f"{sec_pos['x_angle_deg']:.2f}° ({sec_pos['x_direction']})",
+                fg=color
+            )
+            self.sec_z_angle_label.config(
+                text=f"{sec_pos['z_angle_deg']:.2f}° ({sec_pos['z_direction']})",
+                fg=color
+            )
+            self.sec_dist_label.config(
+                text=f"{sec_pos['distance']:.2f} cm",
+                fg='#999966'
+            )
+        else:
+            # No calculation done yet
+            self.sec_x_angle_label.config(text="--", fg='#cccccc')
+            self.sec_z_angle_label.config(text="--", fg='#cccccc')
+            self.sec_dist_label.config(text="--", fg='#cccccc')
+        
+        self.root.update()
+    
+    def update_movement_angles_display(self):
+        """Update movement angles display from robot controller."""
+        mov_angles = self.robot_controller.movement_angles
+        
+        # Check if data has been calculated (distance > 0 means calculation was done)
+        if mov_angles['distance'] > 0:
+            # Movement angles should always be valid during testing
+            # (they represent the actual movement that would be executed)
+            self.mov_x_angle_label.config(
+                text=f"{mov_angles['x_angle_deg']:.2f}° ({mov_angles['x_direction']})",
+                fg='#00aa00'
+            )
+            self.mov_z_angle_label.config(
+                text=f"{mov_angles['z_angle_deg']:.2f}° ({mov_angles['z_direction']})",
+                fg='#00aa00'
+            )
+            self.mov_dist_label.config(
+                text=f"{mov_angles['distance']:.2f} cm",
+                fg='#669966'
+            )
+        else:
+            # No calculation done yet
+            self.mov_x_angle_label.config(text="--", fg='#cccccc')
+            self.mov_z_angle_label.config(text="--", fg='#cccccc')
+            self.mov_dist_label.config(text="--", fg='#cccccc')
+        
+        self.root.update()
+        self.root.update()
     
     def update_remain_values(self,home=False):
         """Update all axis remain values display."""
@@ -866,23 +1073,18 @@ class ScaraMainWindow:
         result = self.robot_controller.inverse_kinematics(x, y)
         
         if result['success']:
-            # Update display labels with direction
-            x_dir = result.get('x_angle_direction', '')
-            z_dir = result.get('z_angle_direction', '')
-            self.ik_x_angle_label.config(text=f"{result['x_angle_deg']:.2f}° ({x_dir})", fg='#0066cc')
-            self.ik_z_angle_label.config(text=f"{result['z_angle_deg']:.2f}° ({z_dir})", fg='#0066cc')
-            
-            # Calculate and show distance
-            distance = math.sqrt(x**2 + y**2)
-            self.ik_dist_label.config(text=f"{distance:.2f} cm", fg='#666666')
-            
             self.log(f"[IK] ✓ {result['message']}")
             self.log(f"[IK] X: {result['x_steps']} steps, Z: {result['z_steps']} steps")
+            
+            # Update all position displays
+            self.update_calculated_angles_display()
+            self.update_sec_calculated_angles_display()
+            self.update_movement_angles_display()
         else:
             # Show error
             self.ik_x_angle_label.config(text="--", fg='#ff0000')
             self.ik_z_angle_label.config(text="--", fg='#ff0000')
-            self.ik_dist_label.config(text="Out of reach", fg='#ff0000')
+            self.ik_dist_label.config(text="Out of reach", fg='#ff0000') 
             self.log(f"[IK] ✗ {result['message']}")
         
         self.root.update()
@@ -909,15 +1111,11 @@ class ScaraMainWindow:
         result = self.robot_controller.move_to_position(x, y, speed)
         
         if result['success']:
-            # Update display labels with direction
-            x_dir = result.get('x_angle_direction', '')
-            z_dir = result.get('z_angle_direction', '')
-            self.ik_x_angle_label.config(text=f"{result['x_angle_deg']:.2f}° ({x_dir})", fg='#00cc00')
-            self.ik_z_angle_label.config(text=f"{result['z_angle_deg']:.2f}° ({z_dir})", fg='#00cc00')
-            
-            # Calculate and show distance
-            distance = math.sqrt(x**2 + y**2)
-            self.ik_dist_label.config(text=f"{distance:.2f} cm", fg='#00cc00')
+            # Update all position displays
+            self.update_calculated_angles_display()
+            self.update_sec_calculated_angles_display()
+            self.update_movement_angles_display()
+            self.update_last_position_display()
             
             self.log(f"[IK] ✓ Movement complete!")
             
@@ -927,10 +1125,13 @@ class ScaraMainWindow:
                     stopper_status = self.robot_controller.__dict__.get(f"{axis}_stopper_status", False)
                     self.update_stopper_indicator(axis, stopper_status)
         else:
-            # Show error
-            self.ik_x_angle_label.config(text="--", fg='#ff0000')
-            self.ik_z_angle_label.config(text="--", fg='#ff0000')
-            self.ik_dist_label.config(text="Error", fg='#ff0000')
+            # Movement failed, but IK calculations are still valid
+            # Update all displays to show the calculated values
+            self.update_calculated_angles_display()
+            self.update_sec_calculated_angles_display()
+            self.update_movement_angles_display()
+            self.update_last_position_display()
+            
             self.log(f"[IK] ✗ {result['message']}")
         
         self.root.update()
@@ -953,6 +1154,8 @@ class ScaraMainWindow:
         
         if success:
             self.log("[Zero] ✓ Successfully zeroised")
+            # Update last position display
+            self.update_last_position_display()
             # Enable Move to Position button after successful zeroising
             self.move_to_position_button.config(state=tk.NORMAL)
             self.log("[System] Move to Position button ENABLED - robot zeroised ✓")

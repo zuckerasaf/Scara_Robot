@@ -3,8 +3,8 @@
   "version": "1.0",
   "robot_geometry": {
     "arm_link_1_length_cm": 22.8,
-    "arm_link_2_length_cm": 13.65,
-    "comment": "L1 = shoulder to elbow (X axis) = 228mm, L2 = elbow to end effector (Z axis) = 136.5mm (from original HowToMechatronics design)",
+    "arm_link_2_length_cm": 14.45,
+    "comment": "L1 = shoulder to elbow (X axis) = 228mm, L2 = elbow to end effector (Z axis) = 144.5mm (from original HowToMechatronics design)",
     "coordinate_system": "USER perspective (sitting in front): Origin at zero config end effector. +X = user's right (robot's left), +Y = toward user. BASE perspective: Origin at shoulder joint. Transform: x_base = -x_user (mirror), y_base = 36.45 - y_user (invert). Zero_point at (0, 36.45cm) in base coords. X axis ±75°, Z axis ±140°."
   },
   "axes": {
