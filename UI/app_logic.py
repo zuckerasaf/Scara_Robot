@@ -671,6 +671,13 @@ class RobotController:
             return {'success': False, 'stopper_hit': False, 'response': 'Not connected'}
         
         try:
+            # Query stopper status BEFORE movement to detect if already pressed
+            pre_stopper_status = self.query_stopper_status(axis_name)
+            if pre_stopper_status:
+                self.log(f"[Movement] WARNING: {axis_name} stopper is ALREADY PRESSED before movement!")
+            else:
+                self.log(f"[Movement] {axis_name} stopper status before movement: OK (not pressed)")
+            
             start_time = time.time()
             
             self.log(f"[Movement] Executing on {axis_name}: {cmd}")
@@ -700,6 +707,13 @@ class RobotController:
                         self.log(f"[Movement] {axis_name} error: {done_response}")
                         if "STOPPER_HIT" in done_response:
                             stopper_hit = True
+                            # Immediately verify stopper status when hit is reported
+                            time.sleep(0.2)  # Small delay to let robot settle
+                            actual_status = self.query_stopper_status(axis_name)
+                            if actual_status:
+                                self.log(f"[Movement] {axis_name} stopper VERIFIED: Pin is actually pressed (=1)")
+                            else:
+                                self.log(f"[Movement] {axis_name} stopper MISMATCH: Firmware reported hit but pin reads NOT pressed (=0) - possible false trigger!")
                         break
                     elif done_response and done_response != "":
                         self.log(f"[Movement] {axis_name} received: {done_response}")
@@ -722,9 +736,10 @@ class RobotController:
             if not movement_done and not stopper_hit:
                 self.log(f"[Movement] {axis_name} TIMEOUT - no completion after {timeout}s")
             
-            # Query stopper status after movement
+            # Query stopper status after movement for final verification
             is_pressed = self.query_stopper_status(axis_name)
             setattr(self, f"{axis_name}_stopper_status", is_pressed)
+            self.log(f"[Movement] {axis_name} final stopper status: {'PRESSED (=1)' if is_pressed else 'NOT PRESSED (=0)'}")
             
             # IMPORTANT: Clear command after execution (success or failure)
             # This prevents old commands from lingering after stopper hits
@@ -849,7 +864,8 @@ class RobotController:
         else:
             self.log(f"[IK] Z movement skipped (0 steps)")
 
-
+        #A_cmd = f"A {-1*(z_movement_value+x_movement_value)} {z_speed}"
+        #self.update_axis_command('A', A_cmd)
         # Execute all movements (only non-zero commands will execute)
         movement_results = self.execute_all_movements()
         
@@ -1184,15 +1200,15 @@ class RobotController:
         
         self.log("[PullUP] Starting PullUP sequence...")
         
-        # Step 1: Set grip to 92 degrees
-        self.log("[PullUP] Step 1: Setting grip to 92°")
-        if not self.grip(92):
-            self.log("[PullUP] ERROR: Failed to set grip to 92°")
+        # Step 1: Set grip to 120 degrees
+        self.log("[PullUP] Step 1: Setting grip to 120")
+        if not self.grip(120):
+            self.log("[PullUP] ERROR: Failed to set grip to 120")
             return False
         
-        # Step 2: Wait 3 seconds
-        self.log("[PullUP] Step 2: Waiting 2 seconds...")
-        for i in range(20):  # 10 x 0.1s = 2 seconds
+        # Step 2: Wait for servo to settle before Y movement
+        self.log("[PullUP] Step 2: Waiting 5 seconds for servo to settle...")
+        for i in range(50):  # 50 x 0.1s = 5 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -1225,9 +1241,19 @@ class RobotController:
             self.log("[PullUP] ERROR: Failed to set grip to 160°")
             return False
         
-        # Step 6: Wait 3 seconds
-        self.log("[PullUP] Step 6: Waiting 2 seconds...")
-        for i in range(20):  # 10 x 0.1s = 2 second
+        # Step 6: Wait 4 seconds for servo to settle
+        self.log("[PullUP] Step 6: Waiting 5 seconds for servo to settle...")
+        for i in range(50):  # 50 x 0.1s = 5 seconds
+            time.sleep(0.1)
+            if self.update_callback:
+                try:
+                    self.update_callback()
+                except:
+                    pass
+        
+        # Additional delay to let servo electrical noise dissipate before Y movement
+        self.log("[PullUP] Step 6b: Extra 3 second delay before Y movement...")
+        for i in range(30):  # 30 x 0.1s = 3 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -1287,15 +1313,25 @@ class RobotController:
             return False
         self.log("[PutDown] Step 2: Y axis down movement complete")
         
-        # Step 3: Set grip to 92 degrees
-        self.log("[PutDown] Step 3: Setting grip to 92°")
-        if not self.grip(92):
-            self.log("[PutDown] ERROR: Failed to set grip to 92°")
+        # Step 3: Set grip to 120 degrees
+        self.log("[PutDown] Step 3: Setting grip to 120°")
+        if not self.grip(120):
+            self.log("[PutDown] ERROR: Failed to set grip to 120°")
             return False
         
-        # Step 4: Wait 3 seconds
-        self.log("[PutDown] Step 4: Waiting 2 seconds...")
-        for i in range(20):  # 10 x 0.1s = 2 seconds
+        # Step 4: Wait 2 seconds for servo to settle
+        self.log("[PutDown] Step 4: Waiting 4 seconds for servo to settle...")
+        for i in range(40):  # 40 x 0.1s = 4 seconds
+            time.sleep(0.1)
+            if self.update_callback:
+                try:
+                    self.update_callback()
+                except:
+                    pass
+        
+        # Additional delay to let servo electrical noise dissipate before Y movement
+        self.log("[PutDown] Step 4b: Extra 3 second delay before Y movement...")
+        for i in range(30):  # 30 x 0.1s = 3 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
