@@ -5,7 +5,7 @@
     "arm_link_1_length_cm": 22.8,
     "arm_link_2_length_cm": 14.45,
     "comment": "L1 = shoulder to elbow (X axis) = 228mm, L2 = elbow to end effector (Z axis) = 144.5mm (from original HowToMechatronics design)",
-    "coordinate_system": "USER perspective (sitting in front): Origin at zero config end effector. +X = user's right (robot's left), +Y = toward user. BASE perspective: Origin at shoulder joint. Transform: x_base = -x_user (mirror), y_base = 36.45 - y_user (invert). Zero_point at (0, 36.45cm) in base coords. X axis ±75°, Z axis ±140°."
+    "coordinate_system": "Origin at shoulder rotation point (base). +X = user's right, +Y = toward user (away from robot base)."
   },
   "axes": {
     "X": {
@@ -14,7 +14,7 @@
       "unit": "degrees",
       "steps_per_unit": 45.45,
       "comment_steps": "45.45 Motor steps per degree. ",
-      "default_speed": 1000,
+      "default_speed": 2000,
       "default_direction": -1,
       "comment_direction": "1 = clockwise, -1 = counter-clockwise",
       "min_limit": 0.0,
@@ -27,7 +27,7 @@
       "unit": "cm",
       "steps_per_unit":1000,
       "comment_steps": "Motor steps per cm",
-      "default_speed": 1000,
+      "default_speed": 2000,
       "comment_speed": "Default speed in steps per second",
       "default_direction": 1,
       "comment_direction": "1 = clockwise, -1 = counter-clockwise",
@@ -41,7 +41,7 @@
       "unit": "degrees",
       "steps_per_unit": 35.71,
       "comment_steps": "35.71 Motor steps per degree",
-      "default_speed": 1000,
+      "default_speed": 2000,
       "default_direction": 1,
       "comment_direction": "1 = clockwise, -1 = counter-clockwise",
       "min_limit": 0.0,
@@ -54,12 +54,56 @@
       "unit": "degrees",
       "steps_per_unit": 10.0,
       "comment_steps": "10.0 Motor steps per degree",
-      "default_speed": 500,
+      "default_speed": 1000,
       "default_direction": 1,
       "comment_direction": "1 = clockwise, -1 = counter-clockwise",
       "min_limit": 0.0,
       "max_limit": 300,
       "enabled": true
+    }
+  },
+  "calibration_markers": {
+    "description": "ArUco marker positions in robot coordinate system (cm) - Origin at Marker 0",
+    "coordinate_system": "Origin at Marker 0. +X and +Y directions based on relative marker positions",
+    "marker_0": {
+      "id": 0,
+      "x_cm": 0,
+      "y_cm": 0,
+      "description": "Marker 0 - ORIGIN (0,0)"
+    },
+    "marker_1": {
+      "id": 1,
+      "x_cm": 0,
+      "y_cm": 20,
+      "description": "Marker 1 - 13cm right, 20cm up from marker 0"
+    },
+    "marker_2": {
+      "id": 2,
+      "x_cm": 48,
+      "y_cm": 20,
+      "description": "Marker 2 - 37cm right, 20cm up from marker 0"
+    },
+    "marker_3": {
+      "id": 3,
+      "x_cm": 48,
+      "y_cm": 0,
+      "description": "Marker 3 - 50cm right, 0cm up from marker 0"
+    },
+    "marker_5": {
+      "id": 5,
+      "x_cm": 24,
+      "y_cm": 10,
+      "description": "Marker 5 - 24cm right, 10cm up from marker 0"
+    }
+  },
+  "detection_settings": {
+    "description": "Color detection region of interest (ROI) settings",
+    "color_detection_roi": {
+      "x": 50,
+      "y": 0,
+      "width": 540,
+      "height": 380,
+      "description": "ROI for color object detection (x, y, width, height) in camera pixels. Adjust to match your workspace area. Default: 50px margin from 640x480 camera"
     }
   },
   "calibration_notes": {

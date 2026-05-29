@@ -21,34 +21,48 @@ class CalibrationClass:
         self.detected_markers = []
         self.confirmed_markers = {}  # Store confirmed marker positions
         self.detection_count = 0
-        self.detection_attempts = 10
-        self.known_marker_positions = self.load_marker_positions()
-        self.calibration_matrix = None
-        self.is_calibrated = False
-        self.marker_5_robot_position = None
-        
+        self.detection_attempts = 5
+
         # Fixed ROI for color detection (x, y, width, height) in pixels
         # Adjust these values to match your workspace area
         self.detection_roi = (50, 50, 540, 380)  # Default: 50px margin from 640x480 camera
+
+        self.known_marker_positions = self.load_marker_positions()
+        self.calibration_matrix = None
+        self.is_calibrated = False
     
     def load_marker_positions(self):
-        """Load known marker positions from axis_config.json"""
+        """Load known marker positions from SCARA_MegaBoard_V8_3pages_centerlines.json"""
         try:
-            config_path = os.path.join(os.path.dirname(__file__), 'axis_config.json')
+            config_path = os.path.join(os.path.dirname(__file__), 'SCARA_MegaBoard_V8_3pages_centerlines.json')
+            print(f"Loading configuration from: {config_path}")
+            
             with open(config_path, 'r') as f:
                 config = json.load(f)
                 
                 # Load marker positions
-                markers = config.get('calibration_markers', {})
+                markers = config.get('markers') or config.get('calibration_markers', {})
                 positions = {}
                 for key, value in markers.items():
-                    if key.startswith('marker_') and 'id' in value:
-                        marker_id = value['id']
+                    if key.startswith('marker_'):
+                        marker_id = value.get('id')
+                        if marker_id is None:
+                            try:
+                                marker_id = int(key.split('_', 1)[1])
+                            except (IndexError, ValueError):
+                                continue
+
+                        x_val = value.get('x')
+                        y_val = value.get('y')
+                        if x_val is None or y_val is None:
+                            continue
+
                         positions[marker_id] = {
-                            'x': value['x_cm'],
-                            'y': value['y_cm']
+                            'x': float(x_val),
+                            'y': float(y_val)
                         }
-                print(f"Loaded {len(positions)} marker positions from config")
+                        print(f"  Marker {marker_id}: ({positions[marker_id]['x']}, {positions[marker_id]['y']}) cm")
+                print(f"✓ Loaded {len(positions)} marker positions from config")
                 
                 # Load detection ROI if available
                 detection_settings = config.get('detection_settings', {})
@@ -56,25 +70,41 @@ class CalibrationClass:
                     roi = detection_settings['color_detection_roi']
                     self.detection_roi = (roi.get('x', 50), roi.get('y', 50), 
                                          roi.get('width', 540), roi.get('height', 380))
-                    print(f"Loaded detection ROI: {self.detection_roi}")
+                    print(f"✓ Loaded detection ROI: x={self.detection_roi[0]}, y={self.detection_roi[1]}, "
+                          f"width={self.detection_roi[2]}, height={self.detection_roi[3]}")
+                else:
+                    print(f"⚠ No detection ROI in config, using default: {self.detection_roi}")
                 
                 return positions
         except Exception as e:
-            print(f"Error loading marker positions: {e}")
+            print(f"✗ Error loading configuration: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
+    def reload_configuration(self):
+        """Reload marker positions and settings from config file."""
+        print("\n" + "="*60)
+        print("RELOADING CONFIGURATION...")
+        print("="*60)
+        self.known_marker_positions = self.load_marker_positions()
+        self.reset_calibration()
+        print("Configuration reloaded. Please run 'Detect Markers' again.")
+        print("="*60 + "\n")
+        return True
+    
     def compute_calibration(self):
-        """Compute camera-to-robot transformation using detected markers 0-3 (minimum 3 required)."""
-        # Check if we have at least 3 calibration markers
-        calibration_markers = [0, 1, 2, 3]
+        """Compute camera-to-robot transformation using all configured markers (minimum 4 required)."""
+        # Use all configured marker IDs from the JSON as calibration candidates.
+        calibration_markers = sorted(self.known_marker_positions.keys())
         detected_ids = list(self.confirmed_markers.keys())
         
-        # Count how many calibration markers are detected
+        # Count how many configured calibration markers are detected
         detected_calibration_markers = [m for m in calibration_markers if m in detected_ids]
         
-        if len(detected_calibration_markers) < 3:
+        if len(detected_calibration_markers) < 4:
             missing = [m for m in calibration_markers if m not in detected_ids]
-            print(f"Cannot calibrate: Need at least 3 markers, found {len(detected_calibration_markers)}. Missing: {missing}")
+            print(f"Cannot calibrate: Need at least 4 configured markers, found {len(detected_calibration_markers)}. Missing: {missing}")
             return False
         
         # Build point correspondences using detected calibration markers
@@ -97,8 +127,8 @@ class CalibrationClass:
                 
                 print(f"  Marker {marker_id}: Camera({center[0]:.1f}, {center[1]:.1f}) -> Robot({robot_x}, {robot_y})")
         
-        if len(robot_points) < 3:
-            print("Not enough markers with known positions")
+        if len(robot_points) < 4:
+            print(f"Not enough markers with known positions (need 4, found {len(robot_points)})")
             return False
         
         # Convert to numpy arrays
@@ -106,7 +136,8 @@ class CalibrationClass:
         robot_points = np.array(robot_points, dtype=np.float32)
         
         # Calculate affine transformation from camera to robot
-        self.calibration_matrix, _ = cv2.estimateAffinePartial2D(camera_points, robot_points)
+        #self.calibration_matrix, _ = cv2.estimateAffinePartial2D(camera_points, robot_points)
+        self.calibration_matrix, _ = cv2.findHomography(camera_points, robot_points)
         
         if self.calibration_matrix is not None:
             self.is_calibrated = True
@@ -115,11 +146,6 @@ class CalibrationClass:
             print(f"  Translation: ({self.calibration_matrix[0,2]:.2f}, {self.calibration_matrix[1,2]:.2f})")
             print(f"  Scale/Rotation: [{self.calibration_matrix[0,0]:.4f}, {self.calibration_matrix[0,1]:.4f}]")
             print(f"                  [{self.calibration_matrix[1,0]:.4f}, {self.calibration_matrix[1,1]:.4f}]")
-            
-            # Show where origin (0,0) is in camera coordinates
-            origin_cam = self.robot_to_camera(0, 0)
-            if origin_cam is not None:
-                print(f"  Origin (0,0) in camera: ({origin_cam[0]:.1f}, {origin_cam[1]:.1f}) pixels")
             
             return True
         else:
@@ -133,7 +159,8 @@ class CalibrationClass:
         
         # Apply affine transformation
         point = np.array([[[camera_x, camera_y]]], dtype=np.float32)
-        transformed = cv2.transform(point, self.calibration_matrix)
+        #transformed = cv2.transform(point, self.calibration_matrix)
+        transformed = cv2.perspectiveTransform(point, self.calibration_matrix)
         return transformed[0][0]
     
     def robot_to_camera(self, robot_x, robot_y):
@@ -142,21 +169,27 @@ class CalibrationClass:
             return None
         
         # Invert the affine transformation matrix
-        try:
-            # For affine transform [a b c; d e f], we need to invert it
-            A = self.calibration_matrix[:, :2]
-            b = self.calibration_matrix[:, 2]
-            A_inv = np.linalg.inv(A)
+        # try:
+        #     # For affine transform [a b c; d e f], we need to invert it
+        #     A = self.calibration_matrix[:, :2]
+        #     b = self.calibration_matrix[:, 2]
+        #     A_inv = np.linalg.inv(A)
             
-            # Apply inverse transformation
-            point = np.array([robot_x, robot_y])
-            camera_point = A_inv @ (point - b)
-            return camera_point
+        #     # Apply inverse transformation
+        #     point = np.array([robot_x, robot_y])
+        #     camera_point = A_inv @ (point - b)
+        #     return camera_point
+        try:
+                H_inv = np.linalg.inv(self.calibration_matrix)
+                point = np.array([[[robot_x, robot_y]]], dtype=np.float32)
+                transformed = cv2.perspectiveTransform(point, H_inv)
+                return transformed[0][0] 
+
         except Exception as e:
             print(f"Error inverting transformation: {e}")
             return None
         
-    def detect_markers(self, frame):
+    def detect_markers(self, frame, draw=True):
         """
         Detect ArUco markers in the given frame.
         
@@ -177,8 +210,8 @@ class CalibrationClass:
         # Detect markers using new API
         corners, ids, rejected = self.detector.detectMarkers(gray)
         
-        # Create a copy of the frame to draw on
-        annotated_frame = frame.copy()
+        # Create output frame (optionally draw overlays)
+        annotated_frame = frame.copy() if draw else frame
         
         # Store detected marker info for this frame
         if ids is not None and len(ids) > 0:
@@ -195,28 +228,17 @@ class CalibrationClass:
                 
                 self.confirmed_markers[marker_id_int]['corners'].append(marker_corners)
                 self.confirmed_markers[marker_id_int]['count'] += 1
-        
+                # Keep only last 10 detections
+                self.confirmed_markers[marker_id_int]['corners'] = self.confirmed_markers[marker_id_int]['corners'][-10:]
         # Draw confirmed markers on the frame
-        if self.confirmed_markers:
+        if draw and self.confirmed_markers:
             for marker_id, data in self.confirmed_markers.items():
                 if data['count'] > 0:
                     # Average the corner positions
                     avg_corners = np.mean(data['corners'], axis=0).astype(np.int32)
-                    
-                    # Determine color: green for calibration markers (0-3), blue for marker 5
-                    if marker_id in [0, 1, 2, 3]:
-                        color = (0, 255, 0)  # Green
-                        label = f"ID: {marker_id}"
-                    elif marker_id == 5:
-                        color = (255, 0, 0)  # Blue
-                        if self.marker_5_robot_position is not None:
-                            x, y = self.marker_5_robot_position
-                            label = f"ID: 5 ({x:.1f}, {y:.1f})cm"
-                        else:
-                            label = f"ID: 5"
-                    else:
-                        color = (0, 255, 255)  # Yellow for unknown
-                        label = f"ID: {marker_id}"
+
+                    color = (0, 255, 255)  # Yellow for all markers
+                    label = f"ID: {marker_id}"
                     
                     # Draw the square
                     cv2.polylines(annotated_frame, [avg_corners], True, color, 3)
@@ -232,35 +254,6 @@ class CalibrationClass:
                         color,
                         2
                     )
-        
-        # Draw origin point (0,0) at Marker 0 position if detected
-        if 0 in self.confirmed_markers and self.confirmed_markers[0]['count'] > 0:
-            # Get marker 0 center position
-            avg_corners = np.mean(self.confirmed_markers[0]['corners'], axis=0)
-            origin_pos = avg_corners.mean(axis=0).astype(int)
-            ox, oy = origin_pos
-            
-            # Draw crosshair at origin (marker 0)
-            cv2.drawMarker(
-                annotated_frame,
-                (ox, oy),
-                (0, 0, 255),  # Red
-                cv2.MARKER_CROSS,
-                30,
-                3
-            )
-            # Draw circle around it
-            cv2.circle(annotated_frame, (ox, oy), 15, (0, 0, 255), 3)
-            # Label it
-            cv2.putText(
-                annotated_frame,
-                "Origin (0,0)",
-                (ox + 20, oy - 20),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2
-            )
         
         return annotated_frame, list(self.confirmed_markers.keys())
     
@@ -304,10 +297,60 @@ class CalibrationClass:
                 return (x, y, w, h)
         
         return None
+
+    def get_marker_roi_polygon(self, frame_shape, padding=8):
+        """Build a rotated ROI polygon around the marker field.
+
+        Priority:
+        1) Project configured marker map points into camera pixels when calibrated.
+        2) Fall back to detected marker corners when calibration is unavailable.
+
+        Returns a 4-point polygon (int32) or None if insufficient marker data.
+        """
+        if frame_shape is None:
+            return None
+
+        marker_points = []
+
+        # Preferred source: projected configured marker map points.
+        if self.is_calibrated and self.calibration_matrix is not None and self.known_marker_positions:
+            for marker_id in sorted(self.known_marker_positions.keys()):
+                marker_pos = self.known_marker_positions[marker_id]
+                cam_pt = self.robot_to_camera(marker_pos['x'], marker_pos['y'])
+                if cam_pt is not None and len(cam_pt) >= 2:
+                    marker_points.append([float(cam_pt[0]), float(cam_pt[1])])
+
+        # Fallback source: detected marker corners.
+        if len(marker_points) < 4 and self.confirmed_markers:
+            marker_points = []
+            for data in self.confirmed_markers.values():
+                if data.get('count', 0) <= 0 or not data.get('corners'):
+                    continue
+                avg_corners = np.mean(data['corners'], axis=0)
+                marker_points.extend(avg_corners.tolist())
+
+        if len(marker_points) < 4:
+            return None
+
+        pts = np.array(marker_points, dtype=np.float32)
+        rect = cv2.minAreaRect(pts)
+        box = cv2.boxPoints(rect).astype(np.float32)
+
+        # Expand rectangle slightly so edge objects on the board are not clipped.
+        center = box.mean(axis=0)
+        vectors = box - center
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        scale = 1.0 + (padding / np.maximum(norms, 1.0))
+        expanded = center + vectors * scale
+
+        h, w = frame_shape[:2]
+        expanded[:, 0] = np.clip(expanded[:, 0], 0, w - 1)
+        expanded[:, 1] = np.clip(expanded[:, 1], 0, h - 1)
+        return expanded.astype(np.int32)
     
     def detect_colored_objects(self, frame, use_roi=True):
         """
-        Detect red, yellow, and blue objects in the frame.
+        Detect configured colored objects in the frame.
         
         Args:
             frame: BGR image from camera
@@ -315,17 +358,21 @@ class CalibrationClass:
             
         Returns:
             dict: Dictionary with detected objects by color
-                {'red': [(x, y, w, h), ...], 'yellow': [...], 'blue': [...]}
+                {'green': [(x, y, w, h), ...], 'yellow': [...], 'blue': [...], ...}
         """
         if frame is None:
             return {}
         
-        # Create ROI mask using fixed detection area
+        # Create ROI mask strictly from marker-boundary polygon.
         roi_mask = None
-        if use_roi and self.detection_roi is not None:
-            x, y, w, h = self.detection_roi
+        if use_roi:
             roi_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
-            roi_mask[y:y+h, x:x+w] = 255
+            marker_roi_polygon = self.get_marker_roi_polygon(frame.shape)
+            if marker_roi_polygon is not None:
+                cv2.fillPoly(roi_mask, [marker_roi_polygon], 255)
+            else:
+                # Without a marker ROI, skip detection to avoid out-of-bound false positives.
+                return {}
         
         # Convert to HSV color space
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -335,11 +382,27 @@ class CalibrationClass:
         
         # Define color ranges in HSV
         color_ranges = {
+            'red': [
+                (np.array([0, 100, 100]), np.array([10, 255, 255])),
+                (np.array([160, 100, 100]), np.array([179, 255, 255]))
+            ],
             'blue': [
                 (np.array([100, 100, 100]), np.array([130, 255, 255]))
             ],
             'yellow': [
                 (np.array([20, 100, 100]), np.array([30, 255, 255]))
+            ],
+            'green': [
+                (np.array([40, 50, 50]), np.array([80, 255, 255]))
+            ],
+            'pink': [
+                (np.array([140, 60, 80]), np.array([170, 255, 255]))
+            ],
+            'brown': [
+                (np.array([8, 80, 40]), np.array([25, 255, 180]))
+            ],
+            'black': [
+                (np.array([0, 0, 0]), np.array([180, 255, 65]))
             ]
         }
         
@@ -375,40 +438,6 @@ class CalibrationClass:
             
             detected_objects[color_name] = objects
         
-        # Add red object detection with area filtering
-        red_ranges = [
-            (np.array([0, 100, 100]), np.array([10, 255, 255])),
-            (np.array([160, 100, 100]), np.array([180, 255, 255]))
-        ]
-        
-        red_mask = None
-        for lower, upper in red_ranges:
-            if red_mask is None:
-                red_mask = cv2.inRange(hsv, lower, upper)
-            else:
-                red_mask = cv2.bitwise_or(red_mask, cv2.inRange(hsv, lower, upper))
-        
-        # Apply ROI mask if provided
-        if roi_mask is not None:
-            red_mask = cv2.bitwise_and(red_mask, roi_mask)
-        
-        # Apply morphological operations
-        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
-        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
-        
-        # Find red contours
-        contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        red_objects = []
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            # Only small/medium red objects (not the mat boundary)
-            if 500 < area < 30000:
-                x, y, w, h = cv2.boundingRect(contour)
-                red_objects.append((x, y, w, h, area))
-        
-        detected_objects['red'] = red_objects
-        
         return detected_objects
     
     def draw_colored_objects(self, frame, detected_objects):
@@ -427,9 +456,13 @@ class CalibrationClass:
         
         # Color BGR values for drawing
         draw_colors = {
-            'red': (0, 0, 255),
+            'green': (0, 255, 0),
             'blue': (255, 0, 0),
-            'yellow': (0, 255, 255)
+            'yellow': (0, 255, 255),
+            'red': (0, 0, 255),
+            'black': (40, 40, 40),
+            'pink': (203, 192, 255),
+            'brown': (19, 69, 139)
         }
         
         for color_name, objects in detected_objects.items():
@@ -463,7 +496,6 @@ class CalibrationClass:
         """Reset detection data."""
         self.confirmed_markers = {}
         self.detection_count = 0
-        self.marker_5_robot_position = None
     
     def reset_calibration(self):
         """Reset calibration and all detection data."""
@@ -471,4 +503,3 @@ class CalibrationClass:
         self.detection_count = 0
         self.calibration_matrix = None
         self.is_calibrated = False
-        self.marker_5_robot_position = None

@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 from datetime import datetime
 import math
+from camera_view import CameraCapture, CameraPanel
 
 
 class AxisControlRow(tk.Frame):
@@ -158,6 +159,151 @@ class GripControlRow(tk.Frame):
             self.log_callback("[Grip] ERROR: Invalid angle value")
 
 
+class TicTacToeControlPanel(tk.Frame):
+    """Tic-Tac-Toe control panel for marker status and future board actions."""
+
+    PANEL_BG = '#ffffff'
+    BUTTON_BG = '#0f5d78'
+    BUTTON_ACTIVE_BG = '#0b4c62'
+    BUTTON_FG = '#ffffff'
+
+    def __init__(self, parent, marker_status_callback, log_callback):
+        super().__init__(parent, relief=tk.GROOVE, borderwidth=2, bg=self.PANEL_BG, padx=15, pady=15)
+        self.marker_status_callback = marker_status_callback
+        self.log_callback = log_callback
+
+        tk.Label(
+            self,
+            text="Tic tac tow control",
+            font=('Arial', 28),
+            bg=self.PANEL_BG,
+            anchor='w'
+        ).pack(side=tk.TOP, fill=tk.X, pady=(0, 12))
+
+        top_frame = tk.Frame(self, bg=self.PANEL_BG)
+        top_frame.pack(side=tk.TOP, fill=tk.X, pady=(0, 15))
+        top_frame.columnconfigure(0, weight=1)
+        top_frame.columnconfigure(1, weight=1)
+        top_frame.columnconfigure(2, weight=1)
+
+        self.marker_number_entry = tk.Entry(
+            top_frame,
+            font=('Arial', 16),
+            width=14,
+            justify=tk.CENTER,
+            relief=tk.SOLID,
+            borderwidth=2
+        )
+        self.marker_number_entry.grid(row=0, column=0, padx=8, sticky='ew')
+        self._add_entry_placeholder(self.marker_number_entry, "Marker number")
+
+        self.status_button = tk.Button(
+            top_frame,
+            text="Status",
+            font=('Arial', 24),
+            width=11,
+            command=self.on_status_pressed,
+            bg=self.BUTTON_BG,
+            fg=self.BUTTON_FG,
+            activebackground=self.BUTTON_ACTIVE_BG,
+            activeforeground=self.BUTTON_FG,
+            relief=tk.RAISED,
+            borderwidth=4
+        )
+        self.status_button.grid(row=0, column=1, padx=8, sticky='ew')
+
+        self.marker_status_var = tk.StringVar(value="Marker status")
+        self.marker_status_label = tk.Label(
+            top_frame,
+            textvariable=self.marker_status_var,
+            font=('Arial', 16),
+            bg=self.BUTTON_BG,
+            fg=self.BUTTON_FG,
+            relief=tk.RAISED,
+            borderwidth=3,
+            width=16
+        )
+        self.marker_status_label.grid(row=0, column=2, padx=8, sticky='ew')
+
+        self.board_frame = tk.Frame(self, bg=self.PANEL_BG)
+        self.board_frame.pack(side=tk.TOP, pady=(5, 20))
+        self.board_cells = []
+        for row in range(3):
+            row_cells = []
+            for col in range(3):
+                cell_index = row * 3 + col
+                label = tk.Label(
+                    self.board_frame,
+                    text=f"{cell_index}/{cell_index + 15}",
+                    font=('Arial', 11, 'bold'),
+                    width=10,
+                    height=4,
+                    bg='#f7f7f7',
+                    fg='#000000',
+                    relief=tk.SOLID,
+                    borderwidth=2
+                )
+                label.grid(row=row, column=col, sticky='nsew')
+                row_cells.append(label)
+            self.board_cells.append(row_cells)
+
+        bottom_frame = tk.Frame(self, bg=self.PANEL_BG)
+        bottom_frame.pack(side=tk.TOP, fill=tk.X)
+
+        self.your_turn_button = tk.Button(
+            bottom_frame,
+            text="You turn",
+            font=('Arial', 24),
+            width=12,
+            command=self.on_your_turn_pressed,
+            bg=self.BUTTON_BG,
+            fg=self.BUTTON_FG,
+            activebackground=self.BUTTON_ACTIVE_BG,
+            activeforeground=self.BUTTON_FG,
+            relief=tk.RAISED,
+            borderwidth=4
+        )
+        self.your_turn_button.pack(side=tk.LEFT, padx=10, pady=5)
+
+    def _add_entry_placeholder(self, entry, placeholder):
+        entry.insert(0, placeholder)
+        entry.config(fg='#ffffff', bg=self.BUTTON_BG)
+
+        def on_focus_in(_event):
+            if entry.get() == placeholder:
+                entry.delete(0, tk.END)
+                entry.config(fg='#000000', bg='#ffffff')
+
+        def on_focus_out(_event):
+            if not entry.get().strip():
+                entry.insert(0, placeholder)
+                entry.config(fg='#ffffff', bg=self.BUTTON_BG)
+
+        entry.bind('<FocusIn>', on_focus_in)
+        entry.bind('<FocusOut>', on_focus_out)
+
+    def on_status_pressed(self):
+        marker_text = self.marker_number_entry.get().strip()
+        if marker_text == "Marker number" or not marker_text:
+            self.marker_status_var.set("Enter marker #")
+            self.log_callback("[TicTacToe] Marker number is required")
+            return
+
+        try:
+            marker_number = int(marker_text)
+        except ValueError:
+            self.marker_status_var.set("Invalid marker")
+            self.log_callback(f"[TicTacToe] Invalid marker number: {marker_text}")
+            return
+
+        result = self.marker_status_callback(marker_number)
+        self.marker_status_var.set(str(result))
+        self.log_callback(f"[TicTacToe] Marker {marker_number} status: {result}")
+
+    def on_your_turn_pressed(self):
+        self.log_callback("[TicTacToe] Your turn button pressed - logic not implemented yet")
+
+
 class LogPanel(tk.Frame):
     """Log panel with scrollable text area."""
     
@@ -209,8 +355,8 @@ class ScaraMainWindow:
         
         # Configure window
         self.root.title("SCARA Robot Controller")
-        self.root.geometry("1400x1100")
-        self.root.minsize(1400, 1100)
+        self.root.geometry("2200x1400")
+        self.root.minsize(2200, 1400)
         
         # Tech mode state
         self.tech_mode_enabled = False
@@ -222,14 +368,19 @@ class ScaraMainWindow:
         # Main container
         main_container = tk.Frame(self.root, bg='#f5f5f5')
         main_container.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
-        main_container.columnconfigure(0, weight=1)
-        main_container.columnconfigure(1, weight=1)
+        main_container.columnconfigure(0, weight=1)  # Camera panel
+        main_container.columnconfigure(1, weight=1)  # Axis Direct move
+        main_container.columnconfigure(2, weight=1)  # Inverse kinematics
         main_container.rowconfigure(0, weight=3)
         main_container.rowconfigure(1, weight=0)
         main_container.rowconfigure(2, weight=0)
         main_container.rowconfigure(3, weight=2)
         
+        # Initialize camera (use index 1 for USB camera, 0 for integrated)
+        self.camera_capture = CameraCapture(camera_index=1, width=640, height=480)
+        
         # Create panels
+        self.create_camera_panel(main_container)
         self.create_left_panel(main_container)
         self.create_right_panel(main_container)
         self.create_status_panel(main_container)
@@ -262,6 +413,11 @@ class ScaraMainWindow:
         else:
             return direction_options[1]
     
+    def create_camera_panel(self, parent):
+        """Create camera panel on the left."""
+        self.camera_panel = CameraPanel(parent, self.camera_capture, update_interval=30, parent_app=self)
+        self.camera_panel.grid(row=0, column=0, sticky='nsew', padx=(0, 5), pady=(0, 5))
+    
     def create_left_panel(self, parent):
         """Create left panel: Axis Direct move."""
         panel = tk.LabelFrame(
@@ -274,7 +430,7 @@ class ScaraMainWindow:
             padx=10,
             pady=10
         )
-        panel.grid(row=0, column=0, sticky='nsew', padx=(0, 5), pady=(0, 5))
+        panel.grid(row=0, column=1, sticky='nsew', padx=5, pady=(0, 5))
         
         # Get defaults from config
         y_speed, y_dir, y_steps_per_unit, y_min_limit, y_max_limit = self.robot_controller.get_axis_defaults('Y')
@@ -353,7 +509,21 @@ class ScaraMainWindow:
             activebackground='#d0d0d0'
         )
         go_button.pack(pady=10)
+
+        # Tic-Tac-Toe control panel
+        self.tictactoe_panel = TicTacToeControlPanel(
+            panel,
+            marker_status_callback=self.get_marker_status,
+            log_callback=self.log
+        )
+        self.tictactoe_panel.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
     
+    def get_marker_status(self, marker_number):
+        """Return marker status using the camera panel helper."""
+        if not hasattr(self, 'camera_panel') or self.camera_panel is None:
+            return "Camera not ready"
+        return self.camera_panel.marker_status(marker_number)
+
     def create_right_panel(self, parent):
         """Create right panel: Inverse kinematics."""
         panel = tk.LabelFrame(
@@ -366,7 +536,7 @@ class ScaraMainWindow:
             padx=10,
             pady=10
         )
-        panel.grid(row=0, column=1, sticky='nsew', padx=(5, 0), pady=(0, 5))
+        panel.grid(row=0, column=2, sticky='nsew', padx=(5, 0), pady=(0, 5))
         
         # Title section
         tk.Label(
@@ -395,6 +565,30 @@ class ScaraMainWindow:
         self.ik_y_entry = tk.Entry(y_row, width=12, font=('Arial', 10))
         self.ik_y_entry.pack(side=tk.LEFT, padx=5)
         self.ik_y_entry.insert(0, "0")
+
+        # Marker position picker (load marker X/Y into IK inputs)
+        marker_row = tk.Frame(input_frame, bg='#ffffff')
+        marker_row.pack(fill=tk.X, pady=5)
+        tk.Label(marker_row, text="Marker preset:", width=15, anchor='w', bg='#ffffff').pack(side=tk.LEFT)
+
+        self.marker_position_var = tk.StringVar()
+        self.marker_position_dropdown = ttk.Combobox(
+            marker_row,
+            textvariable=self.marker_position_var,
+            width=25,
+            state='readonly'
+        )
+        self.marker_position_dropdown.pack(side=tk.LEFT, padx=5)
+
+        self.upload_marker_xy_button = tk.Button(
+            marker_row,
+            text="Upload XY",
+            font=('Arial', 9),
+            command=self.on_upload_marker_xy,
+            bg='#ddeeff',
+            activebackground='#cce0ff'
+        )
+        self.upload_marker_xy_button.pack(side=tk.LEFT, padx=5)
         
         # Speed input
         speed_row = tk.Frame(input_frame, bg='#ffffff')
@@ -402,7 +596,10 @@ class ScaraMainWindow:
         tk.Label(speed_row, text="Speed (steps/s):", width=15, anchor='w', bg='#ffffff').pack(side=tk.LEFT)
         self.ik_speed_entry = tk.Entry(speed_row, width=12, font=('Arial', 10))
         self.ik_speed_entry.pack(side=tk.LEFT, padx=5)
-        self.ik_speed_entry.insert(0, "1000")
+        self.ik_speed_entry.insert(0, "2000")
+
+        self.marker_position_map = {}
+        self.refresh_marker_position_dropdown()
         
         # Separator
         ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=20, padx=20)
@@ -522,6 +719,94 @@ class ScaraMainWindow:
         # Separator
         ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=20, padx=20)
         
+        # Item Detected section
+        item_detected_frame = tk.LabelFrame(panel, text="Item Detected", bg='#ffffff', font=('Arial', 10, 'bold'))
+        item_detected_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        # Create table for detected items
+        table_frame = tk.Frame(item_detected_frame, bg='#ffffff')
+        table_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Define columns
+        columns = ("ID", "Camera X", "Camera Y", "Marker 0->X", "Marker 0->Y", "Robot X", "Robot Y")
+        self.item_table = ttk.Treeview(table_frame, columns=columns, show='headings', height=3)
+        
+        # Configure column headings and widths
+        col_widths = [50, 75, 75, 85, 85, 75, 75]
+        for col, width in zip(columns, col_widths):
+            self.item_table.heading(col, text=col)
+            self.item_table.column(col, width=width, anchor='center')
+        
+        # Add scrollbar
+        scrollbar = ttk.Scrollbar(table_frame, orient=tk.VERTICAL, command=self.item_table.yview)
+        self.item_table.configure(yscroll=scrollbar.set)
+        
+        self.item_table.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Configure tag colors for different items
+        self.item_table.tag_configure('green', background='#ccffcc')
+        self.item_table.tag_configure('blue', background='#ccccff')
+        self.item_table.tag_configure('yellow', background='#ffffcc')
+        self.item_table.tag_configure('red', background='#ffcccc')
+        self.item_table.tag_configure('black', background='#d9d9d9')
+        self.item_table.tag_configure('pink', background='#ffd9ef')
+        self.item_table.tag_configure('brown', background='#e6ccb3')
+        
+        # Buttons below the table
+        item_buttons_frame = tk.Frame(item_detected_frame, bg='#ffffff')
+        item_buttons_frame.pack(pady=5)
+
+        color_options = ["Green", "Yellow", "Blue", "Red", "Black", "Pink", "Brown"]
+
+        tk.Label(
+            item_buttons_frame,
+            text="Pick",
+            font=('Arial', 9, 'bold'),
+            bg='#ffffff'
+        ).pack(side=tk.LEFT, padx=(5, 3))
+
+        self.pick_color_combo = ttk.Combobox(
+            item_buttons_frame,
+            values=color_options,
+            width=9,
+            state='readonly'
+        )
+        self.pick_color_combo.set("Green")
+        self.pick_color_combo.pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Label(
+            item_buttons_frame,
+            text="Put it on",
+            font=('Arial', 9, 'bold'),
+            bg='#ffffff'
+        ).pack(side=tk.LEFT, padx=(0, 3))
+
+        self.place_color_combo = ttk.Combobox(
+            item_buttons_frame,
+            values=color_options,
+            width=9,
+            state='readonly'
+        )
+        self.place_color_combo.set("Yellow")
+        self.place_color_combo.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.pick_place_do_button = tk.Button(
+            item_buttons_frame,
+            text="Do",
+            font=('Arial', 10, 'bold'),
+            width=8,
+            height=2,
+            command=self.on_pick_and_place_colors,
+            bg='#4472C4',
+            fg='white',
+            activebackground='#365a9e'
+        )
+        self.pick_place_do_button.pack(side=tk.LEFT, padx=5)
+        
+        # Separator
+        ttk.Separator(panel, orient='horizontal').pack(fill=tk.X, pady=20, padx=20)
+        
         # Buttons
         button_frame = tk.Frame(panel, bg='#ffffff')
         button_frame.pack(pady=10)
@@ -620,7 +905,7 @@ class ScaraMainWindow:
     def create_status_panel(self, parent):
         """Create status panel showing stopper and homing status."""
         status_frame = tk.Frame(parent, relief=tk.GROOVE, borderwidth=2, bg='#ffffff')
-        status_frame.grid(row=1, column=0, columnspan=2, sticky='ew', padx=0, pady=(5, 5))
+        status_frame.grid(row=1, column=0, columnspan=3, sticky='ew', padx=0, pady=(5, 5))
         
         # Configure grid for 4 columns (one per axis)
         for i in range(4):
@@ -696,7 +981,7 @@ class ScaraMainWindow:
     def create_action_buttons(self, parent):
         """Create bottom action button row."""
         button_frame = tk.Frame(parent, bg='#f5f5f5')
-        button_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(5, 5))
+        button_frame.grid(row=2, column=0, columnspan=3, sticky='ew', pady=(5, 5))
         
         # Configure equal weight for all columns to spread buttons evenly
         for i in range(6):
@@ -730,7 +1015,7 @@ class ScaraMainWindow:
     def create_log_panel(self, parent):
         """Create log panel at the bottom."""
         self.log_panel = LogPanel(parent)
-        self.log_panel.grid(row=3, column=0, columnspan=2, sticky='nsew', pady=(5, 0))
+        self.log_panel.grid(row=3, column=0, columnspan=3, sticky='nsew', pady=(5, 0))
     
     # Visual update methods
     
@@ -754,7 +1039,7 @@ class ScaraMainWindow:
         self.zeroised_indicator.itemconfig('indicator', fill=color)
         self.root.update()
     
-    def check_and_enable_go_to_zero(self):
+    def check_and_enable_go_to_zero(self) -> bool:
         """Check if all axes are homed and enable Go to Zero button if true."""
         all_homed = (
             self.robot_controller.Y_homing_status and
@@ -766,8 +1051,10 @@ class ScaraMainWindow:
         if all_homed:
             self.go_to_zero_button.config(state=tk.NORMAL)
             self.log("[System] Go to Zero button ENABLED - all axes homed ✓")
+            return True
         else:
             self.go_to_zero_button.config(state=tk.DISABLED)
+            return False
     
     def update_last_position_display(self):
         """Update last position display from robot controller."""
@@ -917,6 +1204,100 @@ class ScaraMainWindow:
         
         self.root.update()
     
+    def update_item_table(self, detected_objects):
+        """Update the Item Detected table with detected colored objects.
+        
+        Args:
+            detected_objects: dict with structure:
+                {
+                    'green': [(camera_x, camera_y, marker0_x, marker0_y, robot_x, robot_y), ...],
+                    'blue': [...],
+                    'yellow': [...]
+                }
+        """
+        # Clear existing items
+        for item in self.item_table.get_children():
+            self.item_table.delete(item)
+        
+        # Add detected items
+        for color in ['green', 'yellow', 'blue', 'red', 'black', 'pink', 'brown']:
+            if color in detected_objects and detected_objects[color]:
+                for obj_data in detected_objects[color]:
+                    # obj_data is expected as (camera_x, camera_y, marker0_x, marker0_y, robot_x, robot_y)
+                    # but Robot X/Y table columns are intentionally forced to marker0 values.
+                    if len(obj_data) >= 6:
+                        camera_x, camera_y, marker0_x, marker0_y, _robot_x, _robot_y = obj_data[:6]
+                        values = (
+                            color.capitalize(),
+                            f"{camera_x:.1f}",
+                            f"{camera_y:.1f}",
+                            f"{marker0_x:.1f}",
+                            f"{marker0_y:.1f}",
+                            f"{marker0_x:.1f}",
+                            f"{marker0_y:.1f}"
+                        )
+                        self.item_table.insert('', tk.END, values=values, tags=(color,))
+    
+    def get_item_position(self, color_name):
+        """Get the robot position (x, y) of a detected item by color name.
+        
+        Args:
+            color_name: Color name (e.g., 'Green', 'Blue', 'Yellow')
+            
+        Returns:
+            tuple: (robot_x, robot_y) if found, None if not found
+        """
+        for item_id in self.item_table.get_children():
+            values = self.item_table.item(item_id)['values']
+            if values and values[0] == color_name:
+                # Values are: (ID, Camera X, Camera Y, Marker 0->X, Marker 0->Y, Robot X, Robot Y)
+                # Robot X is at index 5, Robot Y is at index 6
+                try:
+                    robot_x = float(values[5])
+                    robot_y = float(values[6])
+                    return (robot_x, robot_y)
+                except (ValueError, IndexError):
+                    return None
+        return None
+
+    def refresh_marker_position_dropdown(self):
+        """Refresh marker dropdown values from configured calibration marker positions."""
+        self.marker_position_map = {}
+        marker_values = []
+
+        marker_positions = {}
+        if hasattr(self, 'camera_panel') and hasattr(self.camera_panel, 'calibration'):
+            marker_positions = self.camera_panel.calibration.known_marker_positions
+
+        for marker_id in sorted(marker_positions.keys()):
+            x_val = marker_positions[marker_id]['x']
+            y_val = marker_positions[marker_id]['y']
+            label = f"Marker {marker_id} ({x_val:.1f}, {y_val:.1f})"
+            marker_values.append(label)
+            self.marker_position_map[label] = (x_val, y_val)
+
+        self.marker_position_dropdown['values'] = marker_values
+        if marker_values:
+            self.marker_position_dropdown.set(marker_values[0])
+        else:
+            self.marker_position_dropdown.set('')
+
+    def on_upload_marker_xy(self):
+        """Load selected marker X/Y values into IK position inputs."""
+        selected = self.marker_position_var.get()
+        marker_xy = self.marker_position_map.get(selected)
+
+        if marker_xy is None:
+            self.log("[IK] No marker position selected")
+            return
+
+        marker_x, marker_y = marker_xy
+        self.ik_x_entry.delete(0, tk.END)
+        self.ik_x_entry.insert(0, f"{marker_x:.2f}")
+        self.ik_y_entry.delete(0, tk.END)
+        self.ik_y_entry.insert(0, f"{marker_y:.2f}")
+        self.log(f"[IK] Loaded marker XY into inputs: ({marker_x:.2f}, {marker_y:.2f})")
+    
     def update_all_stopper_status(self):
         """Query and update all stopper status visuals."""
         status = self.robot_controller.query_all_stopper_status()
@@ -952,6 +1333,10 @@ class ScaraMainWindow:
     
     def on_home(self):
         """Handle Home button press."""
+        # Reset homing indicators before starting a new homing cycle.
+        for axis in ['Y', 'X', 'Z', 'A']:
+            self.update_homing_indicator(axis, False)
+
         if not self.robot_controller.link:
             self.log("[Home] ERROR: Not connected to robot")
             self.root.update()
@@ -961,8 +1346,8 @@ class ScaraMainWindow:
         self.root.update()
         
         # Home Y axis
-        Y_homing = "Y 20000 1000"
-        Y_backoff = "Y -200 1000"
+        Y_homing = "Y 20000 2000"
+        Y_backoff = "Y -200 2000"
         status_y = self.robot_controller.home_axis("Y", Y_homing, Y_backoff)
         
         # Update visuals
@@ -973,8 +1358,8 @@ class ScaraMainWindow:
         self.root.update()
 
         # Home X axis (rotational - degrees)
-        X_homing = "X -36000 1000"      # Move CW towards stopper (360 degrees = 36000 steps typically)
-        X_backoff = "X 500 1000"      # Back off from stopper
+        X_homing = "X -36000 2000"      # Move CW towards stopper (360 degrees = 36000 steps typically)
+        X_backoff = "X 500 2000"      # Back off from stopper
         status_x = self.robot_controller.home_axis("X", X_homing, X_backoff)
         
         # Update visuals for X
@@ -985,8 +1370,8 @@ class ScaraMainWindow:
         self.root.update()
 
         # Home Z axis (rotational - degrees)
-        Z_homing = "Z 36000 1000"      # Move CW towards stopper
-        Z_backoff = "Z -500 1000"      # Back off from stopper
+        Z_homing = "Z 36000 2000"      # Move CW towards stopper
+        Z_backoff = "Z -500 2000"      # Back off from stopper
         status_z = self.robot_controller.home_axis("Z", Z_homing, Z_backoff)
         
         # Update visuals for Z
@@ -997,8 +1382,8 @@ class ScaraMainWindow:
         self.root.update()
         
         # Home A axis (rotational - degrees)
-        A_homing = "A 36000 1000"      # Move CW towards stopper
-        A_backoff = "A -500 1000"      # Back off from stopper
+        A_homing = "A 36000 2000"      # Move CW towards stopper
+        A_backoff = "A -500 2000"      # Back off from stopper
         status_a = self.robot_controller.home_axis("A", A_homing, A_backoff)
         
         # Update visuals for A
@@ -1013,7 +1398,23 @@ class ScaraMainWindow:
         self.log(f"[Home] Homing complete - Y:{status_y}, X:{status_x}, Z:{status_z}, A:{status_a}")
         
         # Check if all axes homed and enable Go to Zero button if ready
-        self.check_and_enable_go_to_zero()
+        status = self.check_and_enable_go_to_zero()
+        if status:
+            self.log("[Home] All axes homed successfully. Go to Zero button enabled.")
+            self.log("[Home] the current  robot position is  (-9.82,12.001) position.")
+            self.robot_controller.update_axis_position_after_home()
+            # Update last position display
+            self.update_last_position_display()
+            # Enable Move to Position button after successful zeroising
+            self.move_to_position_button.config(state=tk.NORMAL)
+            self.log("[System] Move to Position button ENABLED - robot in home position  ✓")
+            # Enable PullUP button after successful zeroising
+            self.pull_up_button.config(state=tk.NORMAL)
+            self.log("[System] PullUP button ENABLED - robot in home position  ✓")
+            # Enable Put Down button after successful zeroising
+            self.put_down_button.config(state=tk.NORMAL)
+            self.log("[System] Put Down button ENABLED - robot in home position  ✓")
+
         
         self.root.update()
         
@@ -1137,6 +1538,7 @@ class ScaraMainWindow:
         self.root.update()
     
     def on_go_to_zero(self):
+        self.update_zeroised_indicator(False) # Reset zeroised indicator at start of action
         """Handle Go to Zero button press - move to (0,0) position."""
         if not self.robot_controller.link:
             self.log("[Zero] ERROR: Not connected to robot")
@@ -1222,15 +1624,116 @@ class ScaraMainWindow:
         
         self.root.update()
     
+    def on_pick_and_place_colors(self):
+        """Pick one detected color item and place it onto another color position."""
+        pick_color = self.pick_color_combo.get().strip()
+        place_color = self.place_color_combo.get().strip()
+
+        if not pick_color or not place_color:
+            self.log("[PickPlace] ERROR: Please select both pick and target colors")
+            return
+
+        if pick_color == place_color:
+            self.log("[PickPlace] ERROR: Pick and target colors must be different")
+            return
+
+        self.execute_pick_and_place_sequence(pick_color, place_color)
+
+    def execute_pick_and_place_sequence(self, pick_color, place_color):
+        """Execute pick/place sequence between two detected color targets."""
+        seq_tag = f"[PickPlace {pick_color} -> {place_color}]"
+        self.log(f"{seq_tag} Starting sequence...")
+        self.root.update()
+
+        # Enable Tech Mode for entire sequence to bypass Y stopper false triggers
+        self.log(f"{seq_tag} Enabling Tech Mode (bypass stopper checks during sequence)")
+        if not self.robot_controller.set_tech_mode(True):
+            self.log(f"{seq_tag} WARNING: Failed to enable Tech Mode")
+
+        pick_pos = self.get_item_position(pick_color)
+        place_pos = self.get_item_position(place_color)
+
+        if not pick_pos:
+            self.log(f"{seq_tag} ERROR: {pick_color} item not detected")
+            self.robot_controller.set_tech_mode(False)
+            return
+
+        if not place_pos:
+            self.log(f"{seq_tag} ERROR: {place_color} item not detected")
+            self.robot_controller.set_tech_mode(False)
+            return
+
+        pick_x, pick_y = pick_pos
+        place_x, place_y = place_pos
+
+        try:
+            # Step 1: Move to picked color position
+            self.log(f"{seq_tag} Step 1: Moving to {pick_color} position ({pick_x:.1f}, {pick_y:.1f})")
+            self.root.update()
+            move_result = self.robot_controller.move_to_position(pick_x, pick_y)
+            if not move_result.get('success', False):
+                self.log(f"{seq_tag} ERROR: Failed to move to {pick_color} position - {move_result.get('message', 'Unknown error')}")
+                self.robot_controller.set_tech_mode(False)
+                return
+
+            # Step 2: Pull up
+            self.log(f"{seq_tag} Step 2: Executing Pull Up")
+            self.root.update()
+            if not self.robot_controller.pull_up():
+                self.log(f"{seq_tag} ERROR: Pull Up failed")
+                self.robot_controller.set_tech_mode(False)
+                return
+
+            # Step 3: Move to place color position
+            self.log(f"{seq_tag} Step 3: Moving to {place_color} position ({place_x:.1f}, {place_y:.1f})")
+            self.root.update()
+            move_result = self.robot_controller.move_to_position(place_x, place_y)
+            if not move_result.get('success', False):
+                self.log(f"{seq_tag} ERROR: Failed to move to {place_color} position - {move_result.get('message', 'Unknown error')}")
+                self.robot_controller.set_tech_mode(False)
+                return
+
+            # Step 4: Put down
+            self.log(f"{seq_tag} Step 4: Executing Put Down")
+            self.root.update()
+            if not self.robot_controller.put_down():
+                self.log(f"{seq_tag} ERROR: Put Down failed")
+                self.robot_controller.set_tech_mode(False)
+                return
+
+            # Step 5: Move to home position (32, 17)
+            self.log(f"{seq_tag} Step 5: Moving to home position (32, 17)")
+            self.root.update()
+            move_result = self.robot_controller.move_to_position(32, 17)
+            if not move_result.get('success', False):
+                self.log(f"{seq_tag} ERROR: Failed to move to home position - {move_result.get('message', 'Unknown error')}")
+                self.robot_controller.set_tech_mode(False)
+                return
+
+            self.log(f"{seq_tag} Sequence completed successfully!")
+
+        except Exception as e:
+            self.log(f"{seq_tag} ERROR: Exception during sequence - {str(e)}")
+        finally:
+            # Always disable Tech Mode at the end
+            self.robot_controller.set_tech_mode(False)
+            self.log(f"{seq_tag} Tech Mode disabled")
+    
     def on_exit(self):
         """Handle Exit button press."""
         self.log("[System] Exit pressed - closing application")
-        self.root.update()
         
         # Disable tech mode before exit for safety
         if self.tech_mode_enabled and self.robot_controller.link:
             self.log("[System] Disabling tech mode before exit...")
             self.robot_controller.set_tech_mode(False)
         
+        # Cleanup camera
+        if hasattr(self, 'camera_panel'):
+            self.camera_panel.cleanup()
+        
         self.robot_controller.cleanup()
-        self.root.destroy()
+        try:
+            self.root.quit()
+        finally:
+            self.root.destroy()

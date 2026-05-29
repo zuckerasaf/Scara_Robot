@@ -25,6 +25,7 @@
 //    YSTEP <steps> <speed_sps> [dir]
 //    ZSTEP <steps> <speed_sps> [dir]
 //    ASTEP <steps> <speed_sps> [dir]
+//    XZSTEP <x_steps> <z_steps> <x_speed_sps> <z_speed_sps> [x_dir] [z_dir]
 //
 //  speed_sps = steps per second (ex: 800)
 //  dir: >=0 forward (default), <0 reverse
@@ -81,6 +82,10 @@ int currentGripperAngle = 90;  // Start at mid position
 // Safety limits for speed (steps per second)
 const unsigned int MIN_SPS = 50;
 const unsigned int MAX_SPS = 2000;
+// Acceleration profile: steps/sec² (change per second)
+// Conservative: 200 sps² means +200 sps velocity every 1 second
+const unsigned int ACCEL_SPS2 = 200;  // Acceleration rate
+const unsigned int MIN_ACCEL_SPS = 200;  // Minimum speed during ramp (raised to avoid low-speed resonance)
 // ============================================================
 // HELPER FUNCTION: reply()
 // ============================================================
@@ -173,6 +178,21 @@ unsigned long spsToDelayUs(unsigned int sps) {
   if (sps < MIN_SPS) sps = MIN_SPS;
   if (sps > MAX_SPS) sps = MAX_SPS;
   return 1000000UL / (unsigned long)sps;
+}
+
+// ============================================================
+// HELPER FUNCTION: calculateAccelSteps()
+// ============================================================
+// Calculate steps needed to reach max_speed from min_speed with acceleration.
+// Using kinematic formula: v² = u² + 2*a*s
+// Rearranged: s = (v² - u²) / (2*a)
+//   where a is in steps/sec² but we use a discrete approximation
+unsigned long calculateAccelSteps(unsigned int min_sps, unsigned int max_sps, unsigned int accel_sps2) {
+  if (accel_sps2 == 0 || max_sps <= min_sps) return 0;
+  // Approximate: use (max - min) / accel_sps2 * 50 as a heuristic
+  // More precise would need floating point
+  unsigned long steps = ((unsigned long)(max_sps - min_sps) * 50) / accel_sps2;
+  return steps;
 }
 
 
@@ -316,8 +336,22 @@ bool moveStepsAxis(const char* axisName, int stepPin, int dirPin, long steps, in
     digitalWrite(dirPin, (dir >= 0) ? HIGH : LOW);  // Normal for X, Y, Z
   }
 
-  //This line converts the motor speed (in steps per second) into a delay time (in microseconds) that should be waited between each step pulse.
+  // Choose a safe ramp start speed (never above target speed).
+  unsigned int start_sps = (speedSps < MIN_ACCEL_SPS) ? speedSps : MIN_ACCEL_SPS;
+
+  // Calculate trapezoidal acceleration profile
+  unsigned long accel_steps = calculateAccelSteps(start_sps, speedSps, ACCEL_SPS2);
+  unsigned long decel_start = (steps > 2 * accel_steps) ? (steps - accel_steps) : (steps / 2);
+  unsigned long cruise_start = accel_steps;
+  
+  // If move is very short, triangle profile: only accel then decel, no cruise
+  if (steps <= 2 * accel_steps) {
+    cruise_start = steps / 2;
+    decel_start = cruise_start;
+  }
+
   unsigned long delayUs = spsToDelayUs(speedSps);
+  unsigned int current_sps = start_sps;  // Start at ramp start speed
 
   for (long i = 0; i < steps; i++) {
     if (isEstopActive()) {
@@ -358,10 +392,192 @@ bool moveStepsAxis(const char* axisName, int stepPin, int dirPin, long steps, in
       return false;
     }
     
+    // Update speed based on phase
+    if (cruise_start > 0 && i < cruise_start) {
+      // Acceleration phase: increase speed smoothly
+      current_sps = start_sps + (unsigned int)(((long)(speedSps - start_sps) * i) / cruise_start);
+      delayUs = spsToDelayUs(current_sps);
+    } else if (i < decel_start) {
+      // Cruise phase: maintain max speed
+      current_sps = speedSps;
+      delayUs = spsToDelayUs(speedSps);
+    } else {
+      // Deceleration phase: decrease speed smoothly
+      long remaining = steps - i;
+      long decel_distance = steps - decel_start;
+      if (decel_distance > 0) {
+        current_sps = start_sps + (unsigned int)(((long)(speedSps - start_sps) * remaining) / decel_distance);
+      } else {
+        current_sps = speedSps;
+      }
+      delayUs = spsToDelayUs(current_sps);
+    }
+    
     stepPulse(stepPin);
     delayMicroseconds(delayUs);
    
   }
+  return true;
+}
+
+// ============================================================
+// FUNCTION: moveStepsXZCoordinated()
+// ============================================================
+// Moves X and Z axes together in one coordinated loop.
+// This keeps both axes active at the same time instead of sequential moves.
+//
+bool moveStepsXZCoordinated(long xSteps, int xDir, unsigned int xSpeedSps,
+                            long zSteps, int zDir, unsigned int zSpeedSps) {
+  bool checkXStopper = true;
+  bool checkZStopper = true;
+  int xMoveDir = (xDir >= 0) ? 1 : -1;
+  int zMoveDir = (zDir >= 0) ? 1 : -1;
+
+  // X stopper pre-check behavior matches single-axis movement.
+  if (technicianMode) {
+    checkXStopper = false;
+  } else if (isXStopperActive()) {
+    if (xStopperBlockedDir != 0) {
+      if (xMoveDir == xStopperBlockedDir) {
+        reply("ERR xstopper_blocking");
+        return false;
+      } else {
+        checkXStopper = false;
+      }
+    }
+  } else {
+    xStopperBlockedDir = 0;
+    checkXStopper = true;
+  }
+
+  // Z stopper pre-check behavior matches single-axis movement.
+  if (technicianMode) {
+    checkZStopper = false;
+  } else if (isZStopperActive()) {
+    if (zStopperBlockedDir != 0) {
+      if (zMoveDir == zStopperBlockedDir) {
+        reply("ERR zstopper_blocking");
+        return false;
+      } else {
+        checkZStopper = false;
+      }
+    }
+  } else {
+    zStopperBlockedDir = 0;
+    checkZStopper = true;
+  }
+
+  // Set directions for X and Z.
+  digitalWrite(X_DIR_PIN, (xDir >= 0) ? HIGH : LOW);
+  digitalWrite(Z_DIR_PIN, (zDir >= 0) ? HIGH : LOW);
+
+  // Per-axis ramp setup for coordinated motion.
+  unsigned int xStartSps = (xSpeedSps < MIN_ACCEL_SPS) ? xSpeedSps : MIN_ACCEL_SPS;
+  unsigned int zStartSps = (zSpeedSps < MIN_ACCEL_SPS) ? zSpeedSps : MIN_ACCEL_SPS;
+
+  unsigned long xAccelSteps = calculateAccelSteps(xStartSps, xSpeedSps, ACCEL_SPS2);
+  unsigned long zAccelSteps = calculateAccelSteps(zStartSps, zSpeedSps, ACCEL_SPS2);
+
+  unsigned long xDecelStart = (xSteps > 2 * (long)xAccelSteps) ? (xSteps - xAccelSteps) : (xSteps / 2);
+  unsigned long zDecelStart = (zSteps > 2 * (long)zAccelSteps) ? (zSteps - zAccelSteps) : (zSteps / 2);
+
+  unsigned long xCruiseStart = xAccelSteps;
+  unsigned long zCruiseStart = zAccelSteps;
+
+  if (xSteps <= 2 * (long)xAccelSteps) {
+    xCruiseStart = xSteps / 2;
+    xDecelStart = xCruiseStart;
+  }
+  if (zSteps <= 2 * (long)zAccelSteps) {
+    zCruiseStart = zSteps / 2;
+    zDecelStart = zCruiseStart;
+  }
+
+  unsigned int xCurrentSps = xStartSps;
+  unsigned int zCurrentSps = zStartSps;
+
+  unsigned long xDelayUs = spsToDelayUs(xCurrentSps);
+  unsigned long zDelayUs = spsToDelayUs(zCurrentSps);
+
+  unsigned long now = micros();
+  unsigned long nextXStepUs = now;
+  unsigned long nextZStepUs = now;
+
+  long xDone = 0;
+  long zDone = 0;
+
+  while (xDone < xSteps || zDone < zSteps) {
+    if (isEstopActive()) {
+      triggerEstop("XZ");
+      return false;
+    }
+
+    if (checkXStopper && isXStopperActive()) {
+      xStopperBlockedDir = xMoveDir;
+      reply("XSTOPPER_HIT");
+      return false;
+    }
+
+    if (checkZStopper && isZStopperActive()) {
+      zStopperBlockedDir = zMoveDir;
+      reply("ZSTOPPER_HIT");
+      return false;
+    }
+
+    now = micros();
+    bool stepped = false;
+
+    if (xDone < xSteps && (long)(now - nextXStepUs) >= 0) {
+      // X acceleration profile
+      if (xCruiseStart > 0 && xDone < (long)xCruiseStart) {
+        xCurrentSps = xStartSps + (unsigned int)(((long)(xSpeedSps - xStartSps) * xDone) / xCruiseStart);
+      } else if (xDone < (long)xDecelStart) {
+        xCurrentSps = xSpeedSps;
+      } else {
+        long xRemaining = xSteps - xDone;
+        long xDecelDistance = xSteps - (long)xDecelStart;
+        if (xDecelDistance > 0) {
+          xCurrentSps = xStartSps + (unsigned int)(((long)(xSpeedSps - xStartSps) * xRemaining) / xDecelDistance);
+        } else {
+          xCurrentSps = xSpeedSps;
+        }
+      }
+      xDelayUs = spsToDelayUs(xCurrentSps);
+
+      stepPulse(X_STEP_PIN);
+      xDone++;
+      nextXStepUs += xDelayUs;
+      stepped = true;
+    }
+
+    if (zDone < zSteps && (long)(now - nextZStepUs) >= 0) {
+      // Z acceleration profile
+      if (zCruiseStart > 0 && zDone < (long)zCruiseStart) {
+        zCurrentSps = zStartSps + (unsigned int)(((long)(zSpeedSps - zStartSps) * zDone) / zCruiseStart);
+      } else if (zDone < (long)zDecelStart) {
+        zCurrentSps = zSpeedSps;
+      } else {
+        long zRemaining = zSteps - zDone;
+        long zDecelDistance = zSteps - (long)zDecelStart;
+        if (zDecelDistance > 0) {
+          zCurrentSps = zStartSps + (unsigned int)(((long)(zSpeedSps - zStartSps) * zRemaining) / zDecelDistance);
+        } else {
+          zCurrentSps = zSpeedSps;
+        }
+      }
+      zDelayUs = spsToDelayUs(zCurrentSps);
+
+      stepPulse(Z_STEP_PIN);
+      zDone++;
+      nextZStepUs += zDelayUs;
+      stepped = true;
+    }
+
+    if (!stepped) {
+      delayMicroseconds(20);
+    }
+  }
+
   return true;
 }
 
@@ -403,6 +619,83 @@ bool parseStepsSpeedDir(const String& line, long& stepsOut, unsigned int& speedO
   stepsOut = steps;
   speedOut = speed;
   dirOut   = dir;
+  return true;
+}
+
+// ============================================================
+// PARSER: parse "x_steps z_steps x_speed z_speed [x_dir] [z_dir]"
+// Returns true on success; false on parse error (and replies ERR ...)
+// ============================================================
+bool parseXZStepsSpeedDir(const String& line,
+                          long& xStepsOut,
+                          long& zStepsOut,
+                          unsigned int& xSpeedOut,
+                          unsigned int& zSpeedOut,
+                          int& xDirOut,
+                          int& zDirOut) {
+  String rest = line;
+  rest.trim();
+
+  String tokens[6];
+  int tokenCount = 0;
+
+  while (rest.length() > 0 && tokenCount < 6) {
+    int sp = rest.indexOf(' ');
+    if (sp < 0) {
+      tokens[tokenCount++] = rest;
+      break;
+    }
+
+    String tok = rest.substring(0, sp);
+    tok.trim();
+    if (tok.length() > 0) {
+      tokens[tokenCount++] = tok;
+    }
+    rest = rest.substring(sp + 1);
+    rest.trim();
+  }
+
+  if (tokenCount < 4) {
+    reply("ERR missing_args");
+    return false;
+  }
+
+  if (tokenCount > 6) {
+    reply("ERR too_many_args");
+    return false;
+  }
+
+  long xSteps = tokens[0].toInt();
+  long zSteps = tokens[1].toInt();
+  unsigned int xSpeed = (unsigned int)tokens[2].toInt();
+  unsigned int zSpeed = (unsigned int)tokens[3].toInt();
+
+  if (xSteps <= 0 || zSteps <= 0) {
+    reply("ERR bad_steps");
+    return false;
+  }
+
+  if (xSpeed == 0 || zSpeed == 0) {
+    reply("ERR bad_speed");
+    return false;
+  }
+
+  int xDir = 1;
+  int zDir = 1;
+  if (tokenCount >= 5) xDir = tokens[4].toInt();
+  if (tokenCount >= 6) zDir = tokens[5].toInt();
+
+  if (xSpeed < MIN_SPS) xSpeed = MIN_SPS;
+  if (xSpeed > MAX_SPS) xSpeed = MAX_SPS;
+  if (zSpeed < MIN_SPS) zSpeed = MIN_SPS;
+  if (zSpeed > MAX_SPS) zSpeed = MAX_SPS;
+
+  xStepsOut = xSteps;
+  zStepsOut = zSteps;
+  xSpeedOut = xSpeed;
+  zSpeedOut = zSpeed;
+  xDirOut = xDir;
+  zDirOut = zDir;
   return true;
 }
 // ============================================================
@@ -592,6 +885,20 @@ void loop()
     reply("ERR estop_latched");
     return;
     }
+
+    // XZSTEP <x_steps> <z_steps> <x_speed_sps> <z_speed_sps> [x_dir] [z_dir]
+    if (line.startsWith("XZSTEP")) {
+      long xSteps, zSteps;
+      unsigned int xSpeed, zSpeed;
+      int xDir, zDir;
+      String rest = line.substring(6); // after "XZSTEP"
+      if (!parseXZStepsSpeedDir(rest, xSteps, zSteps, xSpeed, zSpeed, xDir, zDir)) return;
+      reply("OK moving");
+      bool ok = moveStepsXZCoordinated(xSteps, xDir, xSpeed, zSteps, zDir, zSpeed);
+      if (ok) reply("OK done");
+      return;
+    }
+
     // --------------------------------------------------------
   // XSTEP <steps> <speed_sps> [dir]
   // Examples:

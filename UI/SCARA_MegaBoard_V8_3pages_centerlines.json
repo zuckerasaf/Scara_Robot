@@ -1,0 +1,256 @@
+{
+  "markers": {
+    "marker_0": {
+      "page": 1,
+      "center_x_cm": 26.932,
+      "center_y_cm": 0,
+      "x": 27.5,
+      "y": 13.1
+    },
+    "marker_1": {
+      "page": 1,
+      "center_x_cm": 20.199,
+      "center_y_cm": 0,
+      "x": 20.199,
+      "y": 13.15
+    },
+    "marker_2": {
+      "page": 1,
+      "center_x_cm": 13.466,
+      "center_y_cm": 0,
+      "x": 13.77,
+      "y": 12.9
+    },
+    "marker_3": {
+      "page": 1,
+      "center_x_cm": 26.932,
+      "center_y_cm": 6.733,
+      "x": 27.991,
+      "y":20.5986
+    },
+    "marker_4": {
+      "page": 1,
+      "center_x_cm": 20.199,
+      "center_y_cm": 6.733,
+      "x": 20.8,
+      "y": 20.2
+    },
+    "marker_5": {
+      "page": 1,
+      "center_x_cm": 13.466,
+      "center_y_cm": 6.733,
+      "x": 14.474,
+      "y": 20.5216
+    },
+    "marker_6": {
+      "page": 1,
+      "center_x_cm": 26.932,
+      "center_y_cm": 13.466,
+      "x": 27.759,
+      "y": 27.9808
+    },
+    "marker_7": {
+      "page": 1,
+      "center_x_cm": 20.199,
+      "center_y_cm": 13.466,
+      "x": 21.35,
+      "y": 27.98
+    },
+    "marker_8": {
+      "page": 1,
+      "center_x_cm": 13.466,
+      "center_y_cm": 13.466,
+      "x": 14.36,
+      "y": 27.875
+    },
+    "marker_9": {
+      "page": 1,
+      "center_x_cm": 26.932,
+      "center_y_cm": 20.199,
+      "x": 26.70811502787159,
+      "y": 35.2228
+    },
+    "marker_10": {
+      "page": 1,
+      "center_x_cm": 20.199,
+      "center_y_cm": 20.199,
+      "x": 20.25052686267399,
+      "y": 35.1581
+    },
+    "marker_11": {
+      "page": 1,
+      "center_x_cm": 13.466,
+      "center_y_cm": 20.199,
+      "x": 13.466,
+      "y": 35.2943
+    },
+    "marker_12": {
+      "page": 2,
+      "center_x_cm": 6.733,
+      "center_y_cm": 0,
+      "x": 6.5,
+      "y": 12.9
+    },
+    "marker_13": {
+      "page": 2,
+      "center_x_cm": 0,
+      "center_y_cm": 0,
+      "x": -0.4769969242962823,
+      "y": 13.576867647891
+    },
+    "marker_14": {
+      "page": 2,
+      "center_x_cm": -6.733,
+      "center_y_cm": 0,
+      "x": -6.2,
+      "y": 15
+    },
+    "marker_15": {
+      "page": 2,
+      "center_x_cm": 6.733,
+      "center_y_cm": 6.733,
+      "x": 7.35,
+      "y": 20.5
+    },
+    "marker_16": {
+      "page": 2,
+      "center_x_cm": 0,
+      "center_y_cm": 6.733,
+      "x": 1.0,
+      "y": 21.2
+    },
+    "marker_17": {
+      "page": 2,
+      "center_x_cm": -6.733,
+      "center_y_cm": 6.733,
+      "x": -6,
+      "y": 22.2
+    },
+    "marker_18": {
+      "page": 2,
+      "center_x_cm": 6.733,
+      "center_y_cm": 13.466,
+      "x": 7.65,
+      "y": 28.3
+    },
+    "marker_19": {
+      "page": 2,
+      "center_x_cm": 0,
+      "center_y_cm": 13.466,
+      "x": 0.85,
+      "y": 28.5
+    },
+    "marker_20": {
+      "page": 2,
+      "center_x_cm": -6.733,
+      "center_y_cm": 13.466,
+      "x": -6.0,
+      "y": 29.65
+    },
+    "marker_21": {
+      "page": 2,
+      "center_x_cm": 6.733,
+      "center_y_cm": 20.199,
+      "x": 7.2,
+      "y": 36
+    },
+    "marker_22": {
+      "page": 2,
+      "center_x_cm": 0,
+      "center_y_cm": 20.199,
+      "x": 0.7,
+      "y": 36.2
+    },
+    "marker_23": {
+      "page": 2,
+      "center_x_cm": -6.733,
+      "center_y_cm": 20.199,
+      "x": -6.7,
+      "y": 36.6
+    },
+    "marker_24": {
+      "page": 3,
+      "center_x_cm": -13.466,
+      "center_y_cm": 0,
+      "x": -16.5,
+      "y": 14.5
+    },
+    "marker_25": {
+      "page": 3,
+      "center_x_cm": -20.199,
+      "center_y_cm": 0,
+      "x": -23.5,
+      "y": 15.5
+    },
+    "marker_26": {
+      "page": 3,
+      "center_x_cm": -26.932,
+      "center_y_cm": 0,
+      "x": -28.5,
+      "y": 17.5
+    },
+    "marker_27": {
+      "page": 3,
+      "center_x_cm": -13.466,
+      "center_y_cm": 6.733,
+      "x": -13.0,
+      "y": 23.2
+    },
+    "marker_28": {
+      "page": 3,
+      "center_x_cm": -20.199,
+      "center_y_cm": 6.733,
+      "x": -21.0,
+      "y": 24.0
+    },
+    "marker_29": {
+      "page": 3,
+      "center_x_cm": -26.932,
+      "center_y_cm": 6.733,
+      "x": -28.034,
+      "y": 25.1115
+    },
+    "marker_30": {
+      "page": 3,
+      "center_x_cm": -13.466,
+      "center_y_cm": 13.466,
+      "x": -13.2,
+      "y": 30.2
+    },
+    "marker_31": {
+      "page": 3,
+      "center_x_cm": -20.199,
+      "center_y_cm": 13.466,
+      "x": -20.067,
+      "y": 31.4866
+    },
+    "marker_32": {
+      "page": 3,
+      "center_x_cm": -26.932,
+      "center_y_cm": 13.466,
+      "x":-27.226,
+      "y": 32.7909
+    },
+    "marker_33": {
+      "page": 3,
+      "center_x_cm": -13.466,
+      "center_y_cm": 20.199,
+      "x": -13.26108081235687,
+      "y": 37.8479
+    },
+    "marker_34": {
+      "page": 3,
+      "center_x_cm": -20.199,
+      "center_y_cm": 20.199,
+      "x": -20.20813571717161,
+      "y": 38.9885
+    },
+    "marker_35": {
+      "page": 3,
+      "center_x_cm": -26.932,
+      "center_y_cm": 20.199,
+      "x": -27.23676841192254,
+      "y": 40.33
+    }
+  }
+}

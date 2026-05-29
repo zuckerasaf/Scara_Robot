@@ -100,6 +100,7 @@ class RobotController:
             'x_direction': 'CW',   # Current X direction
             'z_direction': 'CW',   # Current Z direction
             'distance': 0.0,       # Current distance from base in cm
+            'y_axis_cm': 0.0,      # Current Y axis position in cm
             'is_valid': False      # True after first successful move to position
         }   
         
@@ -112,6 +113,7 @@ class RobotController:
             'x_direction': 'CW',   # Current X direction
             'z_direction': 'CW',   # Current Z direction
             'distance': 0.0,       # Current distance from base in cm
+            'y_axis_cm': 0.0,      # Current Y axis position in cm
             'is_valid': False      # True after first successful move to position
         }
         
@@ -124,6 +126,7 @@ class RobotController:
             'x_direction': 'CW',   # X movement direction
             'z_direction': 'CW',   # Z movement direction
             'distance': 0.0,       # Distance from base in cm
+            'y_axis_cm': 0.0,      # Y axis movement in cm
             'is_valid': False      # True after movement angles are calculated
         }
         # Last position tracking (for inverse kinematics optimization)
@@ -135,6 +138,7 @@ class RobotController:
             'x_direction': 'CW',   # Last X direction
             'z_direction': 'CW',   # Last Z direction
             'distance': 0.0,       # Last distance from base
+            'y_axis_cm': 0.0,      # Last Y axis position in cm
             'is_valid': True      # True after first successful move to position
         }
         self.preferred_solution = {
@@ -143,6 +147,7 @@ class RobotController:
             'x_direction': 'CW',   # Preferred X direction
             'z_direction': 'CW',   # Preferred Z direction
             'distance': 0.0,       # Distance from base in cm
+            'y_axis_cm': 0.0,      # Y axis position in cm
             'is_valid': False      # True if preferred solution is valid
         }
         
@@ -181,7 +186,70 @@ class RobotController:
         # self.z_steps_per_unit = self.axis_steps_per_unit['Z'] 
         # self.a_steps_per_unit = self.axis_steps_per_unit['A']
 
-    
+    def update_axis_position_after_home(self):
+        # After homing, we know the exact position of the robot (at the limit switch), so we can update our absolute position tracking accordingly.
+
+        self.absolute_position = {
+            'x_cm': -9.82,           # Current X position in cm from base
+            'y_cm': 12.001,           # Current Y position in cm from base
+            'x_angle_deg': 78.04,    # Current X axis angle in degrees
+            'z_angle_deg': 137.81,    # Current Z axis angle in degrees
+            'x_direction': 'CCW',   # Current X direction
+            'z_direction': 'CW',   # Current Z direction
+            'distance': 15.51,       # Current distance from base in cm
+            'y_axis_cm': 0.0,      # Current Y axis position in cm
+            'is_valid': True      # True after first successful move to position
+        }   
+        
+        # Secondary absolute position tracking (second IK solution)
+        self.sec_absolute_position = {
+            'x_cm': -9.82,           # Current X position in cm from base
+            'y_cm': 12.001,           # Current Y position in cm from base
+            'x_angle_deg': 0.55,    # Current X axis angle in degrees
+            'z_angle_deg': 137.81,    # Current Z axis angle in degrees
+            'x_direction': 'CCW',   # Current X direction
+            'z_direction': 'CCW',   # Current Z direction
+            'distance': 15.51,       # Current distance from base in cm
+            'y_axis_cm': 0.0,      # Current Y axis position in cm
+            'is_valid': True      # True after first successful move to position
+        }
+        
+        # Movement angles (final angles to be executed)
+        self.movement_angles = {
+            'x_cm': -9.82,           # Target X position in cm
+            'y_cm': 12.001,           # Target Y position in cm
+            'x_angle_deg': 78.04,    # X axis movement angle in degrees
+            'z_angle_deg': 137.81,    # Z axis movement angle in degrees
+            'x_direction': 'CCW',   # X movement direction
+            'z_direction': 'CW',   # Z movement direction
+            'distance': 15.51,       # Distance from base in cm
+            'y_axis_cm': 0.0,      # Y axis movement in cm
+            'is_valid': True      # True after movement angles are calculated
+        }
+        # Last position tracking (for inverse kinematics optimization)
+        self.last_position = {
+            'x_cm': -9.82,           # Last X position in cm
+            'y_cm': 12.001,           # Last Y position in cm
+            'x_angle_deg': 78.04,    # Last X axis angle in degrees
+            'z_angle_deg': 137.81,    # Last Z axis angle in degrees
+            'x_direction': 'CCW',   # Last X direction
+            'z_direction': 'CW',   # Last Z direction
+            'distance': 15.51,       # Last distance from base
+            'y_axis_cm': 0.0,      # Last Y axis position in cm
+            'is_valid': True      # True after first successful move to position
+        }
+        self.preferred_solution = {
+            'x_angle_deg': 78.04,    # Preferred X angle in degrees
+            'z_angle_deg': 137.81,    # Preferred Z angle in degrees
+            'x_direction': 'CCW',   # Preferred X direction
+            'z_direction': 'CW',   # Preferred Z direction
+            'distance': 15.51,       # Distance from base in cm
+            'y_axis_cm': 0.0,      # Y axis position in cm
+            'is_valid': True      # True if preferred solution is valid
+        }
+
+
+        
     def load_axis_data(self):
         """Load axis limits from configuration"""
         if self.axis_config and 'axes' in self.axis_config:
@@ -486,105 +554,7 @@ class RobotController:
                 'z_steps': 0,
                 'message': f'IK Success ({message_prefix}): X={final_x_angle:.2f}° ({final_x_direction}), Z={final_z_angle:.2f}° ({final_z_direction})'
             }
-        # # Calculate elbow angle (Z axis) using law of cosines
-        # # cos(θ2) = (r² - L1² - L2²) / (-2 * L1 * L2)
-        # # This gives the elbow angle. There are two solutions: elbow-up (+) and elbow-down (-)
-        # # For SCARA robots, we typically use elbow-down (negative solution)
-        # cos_theta2 = (r**2 - L1**2 - L2**2) / (-2 * L1 * L2)
-        
-        # # Clamp to valid range to avoid math domain errors from floating point precision
-        # cos_theta2 = max(-1.0, min(1.0, cos_theta2))
-        
-        # # Use negative solution for elbow-down configuration
-        # theta2_rad = -math.acos(cos_theta2)  # NEGATIVE for elbow-down
-        # theta2_deg = math.degrees(theta2_rad)
-        
-        # # The interior angle between links (beta) = 180° - |theta2|
-        # beta_deg = 180.0 - abs(theta2_deg)
-        
-        # self.log(f"[IK DEBUG] r={r:.2f}cm, cos_theta2={cos_theta2:.4f}")
-        # self.log(f"[IK DEBUG] theta2={theta2_deg:.2f}°, beta (interior angle)={beta_deg:.2f}°")
-        
-        # # Calculate shoulder angle (X axis)
-        # # Our coordinate system: +Y points upward/forward, +X points right
-        # # Zero position: arms fully extended in +Y direction (0° from vertical)
-        # # Standard SCARA formula assumes +Y points down, so we adjust:
-        # # θ1 = atan2(y, x) - atan2(L2*sin(θ2), L1 + L2*cos(θ2))
-        # # But with Y-up, we need: atan2(-y, x) or adjust the final angle
-        
-        # # Calculate angle from base to target point
-        # angle_to_target = math.atan2(x_base, y_base)  # Note: x,y swapped for "from vertical"
-        
-        # # Calculate angle offset due to elbow bend
-        # # When elbow bends, the shoulder must rotate to compensate
-        # k1 = L1 + L2 * math.cos(theta2_rad)
-        # k2 = L2 * math.sin(theta2_rad)
-        # angle_offset = math.atan2(k2, k1)
-        
-        # # Shoulder angle from vertical (0° = pointing in +Y direction)
-        # theta1_robot_rad = angle_to_target - angle_offset
-        # theta1_robot_deg = math.degrees(theta1_robot_rad)
-        
-        # self.log(f"[IK DEBUG] r={r:.2f}cm, theta2={theta2_deg:.2f}°")
-        # self.log(f"[IK DEBUG] angle_to_target={math.degrees(angle_to_target):.2f}°, angle_offset={math.degrees(angle_offset):.2f}°")
-        # self.log(f"[IK DEBUG] theta1_robot={theta1_robot_deg:.2f}°")
-        
-        # # Check angle limits
-        # # X axis: ±75° from vertical
-        # if abs(theta1_robot_deg) > 75:
-        #     return {
-        #         'success': False,
-        #         'x_angle_deg': theta1_robot_deg,
-        #         'z_angle_deg': theta2_deg,
-        #         'x_steps': 0,
-        #         'z_steps': 0,
-        #         'message': f'X axis out of range! Angle: {theta1_robot_deg:.2f}°, Limit: ±75°'
-        #     }
-        
-        # # Z axis: Check motor range limits
-        # # At zero position (0,0), geometric angle theta2 ≈ 180° (fully extended)
-        # # Motor zero position: -4927 steps = -138° motor position
-        # # Motor can move ±140° from zero position
-        # theta2_at_zero = 180.0  # Geometric angle at zero position
-        # delta_theta2 = theta2_deg - theta2_at_zero  # Change from zero position
-        
-        # z_motor_range = 140.0  # Motor can move ±140° from zero
-        # if abs(delta_theta2) > z_motor_range:
-        #     return {
-        #         'success': False,
-        #         'x_angle_deg': theta1_robot_deg,
-        #         'z_angle_deg': theta2_deg,
-        #         'x_steps': 0,
-        #         'z_steps': 0,
-        #         'message': f'Z motor out of range! Needs {delta_theta2:+.2f}° from zero, Limit: ±{z_motor_range}°'
-        #     }
-        
-        # # Convert angles to steps
-        # x_steps_per_deg = self.axis_steps_per_unit.get('X', 45.45)
-        # z_steps_per_deg = self.axis_steps_per_unit.get('Z', 35.71)
-        
-        # # X axis: Calculate motor steps relative to zero position
-        # # Zero position: 3545 steps corresponds to theta1 = 0° (vertical, pointing down)
-        # # CALIBRATION: Direction inverted - multiply by -1
-        # x_zero_steps = 3545
-        # x_steps = x_zero_steps + int(theta1_robot_deg * x_steps_per_deg) * (-1)
-        
-        # # Z axis: Calculate motor steps relative to zero position
-        # # Zero position: -4927 steps corresponds to theta2 = 180° (fully extended)
-        # z_zero_steps = -4927
-        # z_steps = z_zero_steps + int(delta_theta2 * z_steps_per_deg)
-        
-        # self.log(f"[IK DEBUG] Angles: X={theta1_robot_deg:.2f}° (from vertical), Z={theta2_deg:.2f}° (delta={delta_theta2:+.2f}°)")
-        # self.log(f"[IK DEBUG] Steps: X={x_steps} (zero+{theta1_robot_deg:.2f}°*{x_steps_per_deg}*-1), Z={z_steps} (zero+{delta_theta2:+.2f}°*{z_steps_per_deg})")
-        
-        # return {
-        #     'success': True,
-        #     'x_angle_deg': theta1_robot_deg,
-        #     'z_angle_deg': theta2_deg,
-        #     'x_steps': x_steps,
-        #     'z_steps': z_steps,
-        #     'message': f'IK Success: X={theta1_robot_deg:.2f}° (from vertical), Z={theta2_deg:.2f}°'
-        # }
+       
     
     def update_axis_command(self, axis_name, cmd):
         """Update the command string for an axis."""
@@ -683,8 +653,13 @@ class RobotController:
             self.log(f"[Movement] Executing on {axis_name}: {cmd}")
             response = Robot_command(cmd, self.link, self.log)
             
-            # Calculate timeout based on movement
-            calc_time = abs(int(cmd.split(" ")[1]) / int(cmd.split(" ")[2])) + 1
+            # Calculate timeout based on movement.
+            # With accel/decel enabled in firmware, real duration is higher than constant-speed time.
+            # Add conservative margin for ramp phases and MCU scheduling overhead.
+            cmd_steps = abs(int(cmd.split(" ")[1]))
+            cmd_speed = max(1, abs(int(cmd.split(" ")[2])))
+            base_time = cmd_steps / cmd_speed
+            calc_time = (base_time * 2.2) + 2.0
             timeout = timeout_s if timeout_s is not None else calc_time
             
             movement_done = False
@@ -754,7 +729,99 @@ class RobotController:
         except Exception as e:
             self.log(f"[Movement] ERROR on {axis_name}: {e}")
             return {'success': False, 'stopper_hit': False, 'response': str(e)}
-    
+
+    def execute_xz_movement(self, x_steps_signed, z_steps_signed, x_speed, z_speed, timeout_s=None):
+        """
+        Execute coordinated X and Z movement using the XZSTEP firmware command.
+
+        Args:
+            x_steps_signed: Signed steps for X axis (negative = reverse direction)
+            z_steps_signed: Signed steps for Z axis (negative = reverse direction)
+            x_speed: X axis speed in steps/sec
+            z_speed: Z axis speed in steps/sec
+            timeout_s: Optional timeout override in seconds
+
+        Returns:
+            dict: {'success': bool, 'stopper_hit': bool, 'response': str}
+        """
+        if not self.link:
+            self.log("[XZ] ERROR: Not connected to robot")
+            return {'success': False, 'stopper_hit': False, 'response': 'Not connected'}
+
+        x_steps = abs(x_steps_signed)
+        z_steps = abs(z_steps_signed)
+        x_dir = 1 if x_steps_signed >= 0 else -1
+        z_dir = 1 if z_steps_signed >= 0 else -1
+
+        cmd = f"XZSTEP {x_steps} {z_steps} {x_speed} {z_speed} {x_dir} {z_dir}"
+        self.log(f"[XZ] Sending coordinated command: '{cmd}'")
+
+        try:
+            from protocol import ask
+            response = ask(self.link, cmd)
+            self.log(f"[XZ] Initial response: {response}")
+
+            # Calculate timeout from the slower axis with accel/decel margin.
+            base_time = max(x_steps / max(1, x_speed), z_steps / max(1, z_speed))
+            calc_time = (base_time * 2.2) + 2.0
+            timeout = timeout_s if timeout_s is not None else calc_time
+
+            start_time = time.time()
+            movement_done = False
+            stopper_hit = False
+            done_response = ""
+
+            self.log(f"[XZ] Waiting for completion (timeout: {timeout:.1f}s)")
+
+            while (time.time() - start_time) < timeout:
+                try:
+                    done_response = self.link.ser.readline().decode(errors="ignore").strip()
+
+                    if done_response == "R:OK done":
+                        movement_done = True
+                        self.log(f"[XZ] Coordinated movement completed in {time.time() - start_time:.1f}s")
+                        break
+                    elif "STOPPER_HIT" in done_response or "R:ERR" in done_response:
+                        self.log(f"[XZ] Error/stopper: {done_response}")
+                        stopper_hit = "STOPPER_HIT" in done_response
+                        # Update stopper status for affected axis
+                        if "X" in done_response:
+                            self.X_stopper_status = True
+                        if "Z" in done_response:
+                            self.Z_stopper_status = True
+                        break
+                    elif done_response:
+                        self.log(f"[XZ] Received: {done_response}")
+
+                except Exception as e:
+                    self.log(f"[XZ] Read error: {e}")
+                    break
+
+                if self.update_callback:
+                    try:
+                        self.update_callback()
+                    except Exception:
+                        pass
+
+                time.sleep(0.1)
+
+            if not movement_done and not stopper_hit:
+                self.log(f"[XZ] TIMEOUT - no completion after {timeout:.1f}s")
+
+            # Final stopper verification
+            self.X_stopper_status = self.query_stopper_status('X')
+            self.Z_stopper_status = self.query_stopper_status('Z')
+
+            return {
+                'success': movement_done,
+                'stopper_hit': stopper_hit,
+                'response': done_response
+            }
+
+        except Exception as e:
+            self.log(f"[XZ] ERROR: {e}")
+            return {'success': False, 'stopper_hit': False, 'response': str(e)}
+
     def execute_all_movements(self):
         """
         Execute all queued axis commands.
@@ -822,8 +889,8 @@ class RobotController:
         
         # Use default speeds if not specified
         if speed is None:
-            x_speed = self.axis_config['axes']['X'].get('default_speed', 1000)
-            z_speed = self.axis_config['axes']['Z'].get('default_speed', 1000)
+            x_speed = self.axis_config['axes']['X'].get('default_speed', 2000)
+            z_speed = self.axis_config['axes']['Z'].get('default_speed', 2000)
         else:
             x_speed = y_speed = z_speed = speed
         
@@ -849,26 +916,34 @@ class RobotController:
         else:
             z_movement_value = int(float(z_angle_deg) * self.axis_steps_per_unit.get('Z', 1)   ) * (-1)
         
-        # Only create commands for non-zero movements
-        if x_movement_value != 0:
-            x_cmd = f"X {x_movement_value} {x_speed}"
-            self.update_axis_command('X', x_cmd)
-            self.log(f"[IK] X movement command: '{x_cmd}'")
-        else:
-            self.log(f"[IK] X movement skipped (0 steps)")
-        
-        if z_movement_value != 0:
-            z_cmd = f"Z {z_movement_value} {z_speed}"
-            self.update_axis_command('Z', z_cmd)
-            self.log(f"[IK] Z movement command: '{z_cmd}'")
-        else:
-            self.log(f"[IK] Z movement skipped (0 steps)")
+        self.log(f"[IK] X movement value: {x_movement_value} steps ({x_direction})")
+        self.log(f"[IK] Z movement value: {z_movement_value} steps ({z_direction})")
 
-        #A_cmd = f"A {-1*(z_movement_value+x_movement_value)} {z_speed}"
-        #self.update_axis_command('A', A_cmd)
-        # Execute all movements (only non-zero commands will execute)
-        movement_results = self.execute_all_movements()
-        
+        # Execute X and Z together using coordinated XZSTEP, fall back to individual if only one axis moves
+        movement_results = {}
+        if x_movement_value != 0 and z_movement_value != 0:
+            self.log(f"[IK] Using coordinated XZSTEP: X={x_movement_value} @ {x_speed} sps, Z={z_movement_value} @ {z_speed} sps")
+            xz_result = self.execute_xz_movement(x_movement_value, z_movement_value, x_speed, z_speed)
+            movement_results['X'] = xz_result
+            movement_results['Z'] = xz_result
+        else:
+            # Fall back to individual axis commands for single-axis moves
+            if x_movement_value != 0:
+                x_cmd = f"X {x_movement_value} {x_speed}"
+                self.update_axis_command('X', x_cmd)
+                self.log(f"[IK] X-only movement command: '{x_cmd}'")
+            else:
+                self.log(f"[IK] X movement skipped (0 steps)")
+
+            if z_movement_value != 0:
+                z_cmd = f"Z {z_movement_value} {z_speed}"
+                self.update_axis_command('Z', z_cmd)
+                self.log(f"[IK] Z-only movement command: '{z_cmd}'")
+            else:
+                self.log(f"[IK] Z movement skipped (0 steps)")
+
+            movement_results = self.execute_all_movements()
+
         # Check if all movements were successful
         # If no movements (all 0), consider it a success
         if len(movement_results) == 0:
@@ -1098,15 +1173,15 @@ class RobotController:
         
         # Set predefined zero position commands for all axes
         # These values move the robot to a known safe "zero" configuration
-        self.update_axis_command('Y', "Y -8000 1000")
-        self.update_axis_command('X', "X 3545 1000")
-        self.update_axis_command('Z', "Z -4927 1000")
+        self.update_axis_command('Y', "Y -8000 2000")
+        self.update_axis_command('X', "X 3545 2000")
+        self.update_axis_command('Z', "Z -4927 2000")
         self.update_axis_command('A', "A -250 500")
         
         self.log("[Zero] Executing zero position movements...")
-        self.log("[Y] Mode ACTIVE - Command: Y -8000 1000")
-        self.log("[X] Mode ACTIVE - Command: X 3545 1000")
-        self.log("[Z] Mode ACTIVE - Command: Z -4927 1000")
+        self.log("[Y] Mode ACTIVE - Command: Y -8000 2000")
+        self.log("[X] Mode ACTIVE - Command: X 3545 2000")
+        self.log("[Z] Mode ACTIVE - Command: Z -4927 2000")
         self.log("[A] Mode ACTIVE - Command: A -250 500")
         
         # Execute all movements
@@ -1133,6 +1208,7 @@ class RobotController:
             self.last_position['x_direction'] = 'CW'
             self.last_position['z_direction'] = 'CW'
             self.last_position['distance'] = 0.0
+            self.last_position['y_axis_cm'] = -8.0
             self.last_position['is_valid'] = True
             
             # Absolute position: Reset to initial state (invalid/not calculated)
@@ -1143,6 +1219,7 @@ class RobotController:
             self.absolute_position['x_direction'] = 'CW'
             self.absolute_position['z_direction'] = 'CW'
             self.absolute_position['distance'] = 0.0
+            self.absolute_position['y_axis_cm'] = -8.0
             self.absolute_position['is_valid'] = False
             
             # Secondary absolute position: Reset to initial state (invalid/not calculated)
@@ -1153,6 +1230,7 @@ class RobotController:
             self.sec_absolute_position['x_direction'] = 'CW'
             self.sec_absolute_position['z_direction'] = 'CW'
             self.sec_absolute_position['distance'] = 0.0
+            self.sec_absolute_position['y_axis_cm'] = -8.0
             self.sec_absolute_position['is_valid'] = False
             
             # Movement angles: Reset to initial state (invalid/not calculated)
@@ -1163,6 +1241,7 @@ class RobotController:
             self.movement_angles['x_direction'] = 'CW'
             self.movement_angles['z_direction'] = 'CW'
             self.movement_angles['distance'] = 0.0
+            self.movement_angles['y_axis_cm'] = -8.0
             self.movement_angles['is_valid'] = False
             
             # Preferred solution: Reset to initial state (invalid/not calculated)
@@ -1171,6 +1250,7 @@ class RobotController:
             self.preferred_solution['z_angle_deg'] = 0.0
             self.preferred_solution['z_direction'] = 'CW'
             self.preferred_solution['distance'] = 0.0
+            self.preferred_solution['y_axis_cm'] = -8.0
             self.preferred_solution['is_valid'] = False
             
             self.log("[Zero] All position calculations reset to initial state")
@@ -1183,12 +1263,12 @@ class RobotController:
     def pull_up(self):
         """
         Execute PullUP sequence:
-        1. Grip to 92 degrees
-        2. Wait 3 seconds
+        1. Grip to 120 degrees
+        2. Wait 2 seconds
         3. Y axis 6 cm down
         4. Wait until end of movement
         5. Grip to 160 degrees
-        6. Wait 3 seconds
+        6. Wait 2 seconds
         7. Y axis 6 cm up
         
         Returns:
@@ -1199,6 +1279,17 @@ class RobotController:
             return False
         
         self.log("[PullUP] Starting PullUP sequence...")
+
+        # step 0 : make sure the Z axsis is in the right poisiton for the pull up,
+        current_y_axis_cm = self.last_position.get('y_axis_cm', self.last_position.get('Y_axis_cm', 0.0))
+        if current_y_axis_cm == 0.0:
+            self.update_axis_command('Y', "Y -8000 2000")
+            self.log("[Y] Mode ACTIVE - Command: Y -8000 2000")
+            # Execute all movements
+            results = self.execute_all_movements()
+            self.last_position['y_axis_cm'] = -8.0
+            self.log("[PullUP] Step 0: Moved Y axis to -8 cm to ensure correct starting position for pull up")
+                     
         
         # Step 1: Set grip to 120 degrees
         self.log("[PullUP] Step 1: Setting grip to 120")
@@ -1207,8 +1298,8 @@ class RobotController:
             return False
         
         # Step 2: Wait for servo to settle before Y movement
-        self.log("[PullUP] Step 2: Waiting 5 seconds for servo to settle...")
-        for i in range(50):  # 50 x 0.1s = 5 seconds
+        self.log("[PullUP] Step 2: Waiting 2 seconds for servo to settle...")
+        for i in range(20):  # 20 x 0.1s = 2 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -1242,8 +1333,8 @@ class RobotController:
             return False
         
         # Step 6: Wait 4 seconds for servo to settle
-        self.log("[PullUP] Step 6: Waiting 5 seconds for servo to settle...")
-        for i in range(50):  # 50 x 0.1s = 5 seconds
+        self.log("[PullUP] Step 6: Waiting 2 seconds for servo to settle...")
+        for i in range(20):  # 20 x 0.1s = 2 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -1251,15 +1342,15 @@ class RobotController:
                 except:
                     pass
         
-        # Additional delay to let servo electrical noise dissipate before Y movement
-        self.log("[PullUP] Step 6b: Extra 3 second delay before Y movement...")
-        for i in range(30):  # 30 x 0.1s = 3 seconds
-            time.sleep(0.1)
-            if self.update_callback:
-                try:
-                    self.update_callback()
-                except:
-                    pass
+        # # Additional delay to let servo electrical noise dissipate before Y movement
+        # self.log("[PullUP] Step 6b: Extra 3 second delay before Y movement...")
+        # for i in range(30):  # 30 x 0.1s = 3 seconds
+        #     time.sleep(0.1)
+        #     if self.update_callback:
+        #         try:
+        #             self.update_callback()
+        #         except:
+        #             pass
         
         # Step 7: Y axis 6 cm up
         y_up_steps = int(6 * y_steps_per_cm)
@@ -1282,7 +1373,7 @@ class RobotController:
         1. Y axis 6 cm down
         2. Wait until end of movement
         3. Grip to 92 degrees
-        4. Wait 3 seconds
+        4. Wait 2 seconds
         5. Y axis 6 cm up
         
         Returns:
@@ -1320,8 +1411,8 @@ class RobotController:
             return False
         
         # Step 4: Wait 2 seconds for servo to settle
-        self.log("[PutDown] Step 4: Waiting 4 seconds for servo to settle...")
-        for i in range(40):  # 40 x 0.1s = 4 seconds
+        self.log("[PutDown] Step 4: Waiting 3 seconds for servo to settle...")
+        for i in range(20):  # 20 x 0.1s = 2 seconds
             time.sleep(0.1)
             if self.update_callback:
                 try:
@@ -1329,15 +1420,15 @@ class RobotController:
                 except:
                     pass
         
-        # Additional delay to let servo electrical noise dissipate before Y movement
-        self.log("[PutDown] Step 4b: Extra 3 second delay before Y movement...")
-        for i in range(30):  # 30 x 0.1s = 3 seconds
-            time.sleep(0.1)
-            if self.update_callback:
-                try:
-                    self.update_callback()
-                except:
-                    pass
+        # # Additional delay to let servo electrical noise dissipate before Y movement
+        # self.log("[PutDown] Step 4b: Extra 3 second delay before Y movement...")
+        # for i in range(30):  # 30 x 0.1s = 3 seconds
+        #     time.sleep(0.1)
+        #     if self.update_callback:
+        #         try:
+        #             self.update_callback()
+        #         except:
+        #             pass
         
         # Step 5: Y axis 6 cm up
         y_up_steps = int(6 * y_steps_per_cm)

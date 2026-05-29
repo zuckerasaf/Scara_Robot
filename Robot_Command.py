@@ -93,6 +93,30 @@ def Robot_command (user_input, link, log=None):
         except ValueError:
             return("Invalid angle number")
 
+    # Coordinated XZ move: xzstep <x_steps> <z_steps> <x_speed> <z_speed> [x_dir] [z_dir]
+    if parts[0] == "xzstep":
+        if len(parts) < 5 or len(parts) > 7:
+            return("Format: xzstep <x_steps> <z_steps> <x_speed> <z_speed> [x_dir] [z_dir]")
+        try:
+            x_steps_in = int(parts[1])
+            z_steps_in = int(parts[2])
+            x_speed = int(parts[3])
+            z_speed = int(parts[4])
+        except ValueError:
+            return("Invalid numbers")
+        x_dir = int(parts[5]) if len(parts) >= 6 else (1 if x_steps_in >= 0 else -1)
+        z_dir = int(parts[6]) if len(parts) >= 7 else (1 if z_steps_in >= 0 else -1)
+        x_steps = abs(x_steps_in)
+        z_steps = abs(z_steps_in)
+        resp = ask(link, f"XZSTEP {x_steps} {z_steps} {x_speed} {z_speed} {x_dir} {z_dir}")
+        if resp == "R:ESTOP":
+            return("E-stop triggered. Release button, then type: clr to clear.")
+        if resp == "R:XSTOPPER_HIT":
+            return("X stopper hit during coordinated move!")
+        if resp == "R:ZSTOPPER_HIT":
+            return("Z stopper hit during coordinated move!")
+        return(f"{resp}")
+
     # Axis move: <axis> <steps> <speed>
     if len(parts) != 3:
         return("Format: x|y|z|a <steps> <speed_sps>   ex: x 2000 500   or: y -1500 600")
