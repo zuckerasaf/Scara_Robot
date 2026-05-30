@@ -341,11 +341,12 @@ bool moveStepsAxis(const char* axisName, int stepPin, int dirPin, long steps, in
 
   // Calculate trapezoidal acceleration profile
   unsigned long accel_steps = calculateAccelSteps(start_sps, speedSps, ACCEL_SPS2);
-  unsigned long decel_start = (steps > 2 * accel_steps) ? (steps - accel_steps) : (steps / 2);
+  unsigned long usteps = (unsigned long)steps;
+  unsigned long decel_start = (usteps > 2 * accel_steps) ? (usteps - accel_steps) : (usteps / 2);
   unsigned long cruise_start = accel_steps;
-  
+
   // If move is very short, triangle profile: only accel then decel, no cruise
-  if (steps <= 2 * accel_steps) {
+  if (usteps <= 2 * accel_steps) {
     cruise_start = steps / 2;
     decel_start = cruise_start;
   }
@@ -393,11 +394,11 @@ bool moveStepsAxis(const char* axisName, int stepPin, int dirPin, long steps, in
     }
     
     // Update speed based on phase
-    if (cruise_start > 0 && i < cruise_start) {
+    if (cruise_start > 0 && (unsigned long)i < cruise_start) {
       // Acceleration phase: increase speed smoothly
       current_sps = start_sps + (unsigned int)(((long)(speedSps - start_sps) * i) / cruise_start);
       delayUs = spsToDelayUs(current_sps);
-    } else if (i < decel_start) {
+    } else if ((unsigned long)i < decel_start) {
       // Cruise phase: maintain max speed
       current_sps = speedSps;
       delayUs = spsToDelayUs(speedSps);
@@ -576,6 +577,176 @@ bool moveStepsXZCoordinated(long xSteps, int xDir, unsigned int xSpeedSps,
     if (!stepped) {
       delayMicroseconds(20);
     }
+  }
+
+  return true;
+}
+
+// ============================================================
+// FUNCTION: homeAllAxesCoordinated()
+// ============================================================
+// Homes all 4 axes simultaneously:
+//   Phase 1 – all axes move toward their stoppers in parallel.
+//              Each axis stops independently when its stopper fires.
+//              200µs debounce filters electrical noise on the stopper pins.
+//   Phase 2 – all axes back off from their stoppers in parallel.
+//
+// Step values are signed: positive = forward, negative = reverse.
+//
+bool homeAllAxesCoordinated(
+    long yHS, unsigned int yHSp,
+    long xHS, unsigned int xHSp,
+    long zHS, unsigned int zHSp,
+    long aHS, unsigned int aHSp,
+    long yBS, unsigned int yBSp,
+    long xBS, unsigned int xBSp,
+    long zBS, unsigned int zBSp,
+    long aBS, unsigned int aBSp)
+{
+  // Extract directions and absolute step counts
+  int  yHDir = (yHS >= 0) ? 1 : -1;  long yHSteps = abs(yHS);
+  int  xHDir = (xHS >= 0) ? 1 : -1;  long xHSteps = abs(xHS);
+  int  zHDir = (zHS >= 0) ? 1 : -1;  long zHSteps = abs(zHS);
+  int  aHDir = (aHS >= 0) ? 1 : -1;  long aHSteps = abs(aHS);
+
+  int  yBDir = (yBS >= 0) ? 1 : -1;  long yBSteps = abs(yBS);
+  int  xBDir = (xBS >= 0) ? 1 : -1;  long xBSteps = abs(xBS);
+  int  zBDir = (zBS >= 0) ? 1 : -1;  long zBSteps = abs(zBS);
+  int  aBDir = (aBS >= 0) ? 1 : -1;  long aBSteps = abs(aBS);
+
+  // --- Phase 1: homing – set directions ---
+  digitalWrite(Y_DIR_PIN, (yHDir >= 0) ? HIGH : LOW);
+  digitalWrite(X_DIR_PIN, (xHDir >= 0) ? HIGH : LOW);
+  digitalWrite(Z_DIR_PIN, (zHDir >= 0) ? HIGH : LOW);
+  digitalWrite(A_DIR_PIN, (aHDir >= 0) ? HIGH : LOW);
+
+  // Per-axis acceleration setup
+  unsigned int ySS = (yHSp < MIN_ACCEL_SPS) ? yHSp : MIN_ACCEL_SPS;
+  unsigned int xSS = (xHSp < MIN_ACCEL_SPS) ? xHSp : MIN_ACCEL_SPS;
+  unsigned int zSS = (zHSp < MIN_ACCEL_SPS) ? zHSp : MIN_ACCEL_SPS;
+  unsigned int aSS = (aHSp < MIN_ACCEL_SPS) ? aHSp : MIN_ACCEL_SPS;
+
+  unsigned long yAS = calculateAccelSteps(ySS, yHSp, ACCEL_SPS2);
+  unsigned long xAS = calculateAccelSteps(xSS, xHSp, ACCEL_SPS2);
+  unsigned long zAS = calculateAccelSteps(zSS, zHSp, ACCEL_SPS2);
+  unsigned long aAS = calculateAccelSteps(aSS, aHSp, ACCEL_SPS2);
+
+  unsigned long uyHS = (unsigned long)yHSteps, uxHS = (unsigned long)xHSteps;
+  unsigned long uzHS = (unsigned long)zHSteps, uaHS = (unsigned long)aHSteps;
+  unsigned long yCS = (uyHS > 2*yAS) ? yAS : uyHS/2;
+  unsigned long yDS = (uyHS > 2*yAS) ? uyHS - yAS : uyHS/2;
+  unsigned long xCS = (uxHS > 2*xAS) ? xAS : uxHS/2;
+  unsigned long xDS = (uxHS > 2*xAS) ? uxHS - xAS : uxHS/2;
+  unsigned long zCS = (uzHS > 2*zAS) ? zAS : uzHS/2;
+  unsigned long zDS = (uzHS > 2*zAS) ? uzHS - zAS : uzHS/2;
+  unsigned long aCS = (uaHS > 2*aAS) ? aAS : uaHS/2;
+  unsigned long aDS = (uaHS > 2*aAS) ? uaHS - aAS : uaHS/2;
+
+  unsigned int yCurSps = ySS, xCurSps = xSS, zCurSps = zSS, aCurSps = aSS;
+
+  unsigned long now = micros();
+  unsigned long nextY = now, nextX = now, nextZ = now, nextA = now;
+  unsigned long yDel = spsToDelayUs(yCurSps);
+  unsigned long xDel = spsToDelayUs(xCurSps);
+  unsigned long zDel = spsToDelayUs(zCurSps);
+  unsigned long aDel = spsToDelayUs(aCurSps);
+
+  long yDone = 0, xDone = 0, zDone = 0, aDone = 0;
+  bool yHit = false, xHit = false, zHit = false, aHit = false;
+
+  while (!yHit || !xHit || !zHit || !aHit) {
+    if (isEstopActive()) { triggerEstop("XYZA"); return false; }
+
+    // Stopper checks with 200µs debounce to filter motor electrical noise
+    if (!yHit && isYStopperActive()) {
+      delayMicroseconds(200);
+      if (isYStopperActive()) { yHit = true; yStopperBlockedDir = yHDir; reply("YSTOPPER_HIT"); }
+    }
+    if (!xHit && isXStopperActive()) {
+      delayMicroseconds(200);
+      if (isXStopperActive()) { xHit = true; xStopperBlockedDir = xHDir; reply("XSTOPPER_HIT"); }
+    }
+    if (!zHit && isZStopperActive()) {
+      delayMicroseconds(200);
+      if (isZStopperActive()) { zHit = true; zStopperBlockedDir = zHDir; reply("ZSTOPPER_HIT"); }
+    }
+    if (!aHit && isAStopperActive()) {
+      delayMicroseconds(200);
+      if (isAStopperActive()) { aHit = true; aStopperBlockedDir = aHDir; reply("ASTOPPER_HIT"); }
+    }
+
+    now = micros();
+
+    if (!yHit && yDone < yHSteps && (long)(now - nextY) >= 0) {
+      if (yCS > 0 && yDone < (long)yCS)
+        yCurSps = ySS + (unsigned int)(((long)(yHSp - ySS) * yDone) / yCS);
+      else if (yDone < (long)yDS) yCurSps = yHSp;
+      else { long r = yHSteps - yDone; long d = yHSteps - (long)yDS;
+             yCurSps = (d > 0) ? ySS + (unsigned int)(((long)(yHSp - ySS) * r) / d) : yHSp; }
+      yDel = spsToDelayUs(yCurSps);
+      stepPulse(Y_STEP_PIN); yDone++; nextY += yDel;
+    }
+
+    if (!xHit && xDone < xHSteps && (long)(now - nextX) >= 0) {
+      if (xCS > 0 && xDone < (long)xCS)
+        xCurSps = xSS + (unsigned int)(((long)(xHSp - xSS) * xDone) / xCS);
+      else if (xDone < (long)xDS) xCurSps = xHSp;
+      else { long r = xHSteps - xDone; long d = xHSteps - (long)xDS;
+             xCurSps = (d > 0) ? xSS + (unsigned int)(((long)(xHSp - xSS) * r) / d) : xHSp; }
+      xDel = spsToDelayUs(xCurSps);
+      stepPulse(X_STEP_PIN); xDone++; nextX += xDel;
+    }
+
+    if (!zHit && zDone < zHSteps && (long)(now - nextZ) >= 0) {
+      if (zCS > 0 && zDone < (long)zCS)
+        zCurSps = zSS + (unsigned int)(((long)(zHSp - zSS) * zDone) / zCS);
+      else if (zDone < (long)zDS) zCurSps = zHSp;
+      else { long r = zHSteps - zDone; long d = zHSteps - (long)zDS;
+             zCurSps = (d > 0) ? zSS + (unsigned int)(((long)(zHSp - zSS) * r) / d) : zHSp; }
+      zDel = spsToDelayUs(zCurSps);
+      stepPulse(Z_STEP_PIN); zDone++; nextZ += zDel;
+    }
+
+    if (!aHit && aDone < aHSteps && (long)(now - nextA) >= 0) {
+      if (aCS > 0 && aDone < (long)aCS)
+        aCurSps = aSS + (unsigned int)(((long)(aHSp - aSS) * aDone) / aCS);
+      else if (aDone < (long)aDS) aCurSps = aHSp;
+      else { long r = aHSteps - aDone; long d = aHSteps - (long)aDS;
+             aCurSps = (d > 0) ? aSS + (unsigned int)(((long)(aHSp - aSS) * r) / d) : aHSp; }
+      aDel = spsToDelayUs(aCurSps);
+      stepPulse(A_STEP_PIN); aDone++; nextA += aDel;
+    }
+  }
+
+  // Settle and clear blocked dirs before backoff
+  yStopperBlockedDir = 0;
+  xStopperBlockedDir = 0;
+  zStopperBlockedDir = 0;
+  aStopperBlockedDir = 0;
+  delay(150);
+
+  // --- Phase 2: backoff all axes simultaneously at fixed speed ---
+  digitalWrite(Y_DIR_PIN, (yBDir >= 0) ? HIGH : LOW);
+  digitalWrite(X_DIR_PIN, (xBDir >= 0) ? HIGH : LOW);
+  digitalWrite(Z_DIR_PIN, (zBDir >= 0) ? HIGH : LOW);
+  digitalWrite(A_DIR_PIN, (aBDir >= 0) ? HIGH : LOW);
+
+  unsigned long yBDel = spsToDelayUs(yBSp);
+  unsigned long xBDel = spsToDelayUs(xBSp);
+  unsigned long zBDel = spsToDelayUs(zBSp);
+  unsigned long aBDel = spsToDelayUs(aBSp);
+
+  now = micros();
+  nextY = now; nextX = now; nextZ = now; nextA = now;
+  long yBDone = 0, xBDone = 0, zBDone = 0, aBDone = 0;
+
+  while (yBDone < yBSteps || xBDone < xBSteps || zBDone < zBSteps || aBDone < aBSteps) {
+    if (isEstopActive()) { triggerEstop("XYZA"); return false; }
+    now = micros();
+    if (yBDone < yBSteps && (long)(now - nextY) >= 0) { stepPulse(Y_STEP_PIN); yBDone++; nextY += yBDel; }
+    if (xBDone < xBSteps && (long)(now - nextX) >= 0) { stepPulse(X_STEP_PIN); xBDone++; nextX += xBDel; }
+    if (zBDone < zBSteps && (long)(now - nextZ) >= 0) { stepPulse(Z_STEP_PIN); zBDone++; nextZ += zBDel; }
+    if (aBDone < aBSteps && (long)(now - nextA) >= 0) { stepPulse(A_STEP_PIN); aBDone++; nextA += aBDel; }
   }
 
   return true;
@@ -949,6 +1120,39 @@ void loop()
         return;
     }
        
+    // HOMEALL <yh_steps> <yh_speed> <xh_steps> <xh_speed> <zh_steps> <zh_speed> <ah_steps> <ah_speed>
+    //         <yb_steps> <yb_speed> <xb_steps> <xb_speed> <zb_steps> <zb_speed> <ab_steps> <ab_speed>
+    // Steps are signed (negative = reverse). All 4 axes home simultaneously.
+    if (line.startsWith("HOMEALL")) {
+      String rest = line.substring(7);
+      rest.trim();
+      String tok[16];
+      int cnt = 0;
+      while (rest.length() > 0 && cnt < 16) {
+        int sp = rest.indexOf(' ');
+        if (sp < 0) { tok[cnt++] = rest; break; }
+        String t = rest.substring(0, sp); t.trim();
+        if (t.length() > 0) tok[cnt++] = t;
+        rest = rest.substring(sp + 1); rest.trim();
+      }
+      if (cnt < 16) { reply("ERR missing_args"); return; }
+
+      long  yHS = tok[0].toInt();  unsigned int yHSp = (unsigned int)tok[1].toInt();
+      long  xHS = tok[2].toInt();  unsigned int xHSp = (unsigned int)tok[3].toInt();
+      long  zHS = tok[4].toInt();  unsigned int zHSp = (unsigned int)tok[5].toInt();
+      long  aHS = tok[6].toInt();  unsigned int aHSp = (unsigned int)tok[7].toInt();
+      long  yBS = tok[8].toInt();  unsigned int yBSp = (unsigned int)tok[9].toInt();
+      long  xBS = tok[10].toInt(); unsigned int xBSp = (unsigned int)tok[11].toInt();
+      long  zBS = tok[12].toInt(); unsigned int zBSp = (unsigned int)tok[13].toInt();
+      long  aBS = tok[14].toInt(); unsigned int aBSp = (unsigned int)tok[15].toInt();
+
+      reply("OK homing_all");
+      bool ok = homeAllAxesCoordinated(yHS, yHSp, xHS, xHSp, zHS, zHSp, aHS, aHSp,
+                                        yBS, yBSp, xBS, xBSp, zBS, zBSp, aBS, aBSp);
+      if (ok) reply("OK done");
+      return;
+    }
+
     // --------------------------------------------------------
     // Unknown command
     // --------------------------------------------------------

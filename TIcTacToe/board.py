@@ -3,9 +3,9 @@ from pathlib import Path
 
 # Markers 15-23 are the physical Tic Tac Toe cell centers.
 DEFAULT_CELL_MARKER_IDS = [
-    [15, 16, 17],
-    [18, 19, 20],
-    [21, 22, 23],
+    [1, 4, 7],
+    [12, 15, 18],
+    [14, 17, 20],
 ]
 
 

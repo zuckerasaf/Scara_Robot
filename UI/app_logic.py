@@ -1034,14 +1034,27 @@ class RobotController:
         
         # Execute movement using existing method
         result = self.execute_movement(axis_name, homing_cmd)
-        
-        # Check if stopper was hit
         stopper_status = getattr(self, f"{axis_name}_stopper_status")
-        
+
+        # Retry on false triggers: firmware reported STOPPER_HIT but pin reads LOW.
+        # Caused by motor electrical noise on the stopper pin during travel.
+        retries = 0
+        while result['stopper_hit'] and not stopper_status and retries < 3:
+            self.log(f"[Home] {axis_name} false trigger detected, retrying homing... ({retries + 1}/3)")
+            result = self.execute_movement(axis_name, homing_cmd)
+            stopper_status = getattr(self, f"{axis_name}_stopper_status")
+            retries += 1
+
         if stopper_status:
             self.log(f"[Home] {axis_name} HOMED successfully")
             setattr(self, f"{axis_name}_homing_status", True)
-            
+
+            self.log(f"[Home] {axis_name} clearing stopper latch and re-enabling driver...")
+            Robot_command("clr", self.link, self.log)
+            time.sleep(0.1)
+            Robot_command("ena 1", self.link, self.log)
+            time.sleep(0.1)
+
             # Back off from stopper
             if self.update_axis_command(axis_name, backoff_cmd):
                 self.execute_movement(axis_name, backoff_cmd)
@@ -1052,7 +1065,99 @@ class RobotController:
             self.log(f"[Home] {axis_name} FAILED to home - no stopper hit")
             setattr(self, f"{axis_name}_homing_status", False)
             return f"{axis_name} Failed homing"
-    
+
+    def home_all_axes(self):
+        """
+        Home all 4 axes simultaneously using the HOMEALL firmware command.
+        All axes move toward their stoppers in parallel; each stops independently
+        when its stopper fires. Then all back off together.
+
+        Returns:
+            dict: {'Y': bool, 'X': bool, 'Z': bool, 'A': bool} — True = homed
+        """
+        if not self.link:
+            self.log("[HomeAll] ERROR: Not connected to robot")
+            return {ax: False for ax in ['Y', 'X', 'Z', 'A']}
+
+        self.log("[HomeAll] Starting parallel homing for all 4 axes...")
+
+        # Homing: Y +20000, X -36000, Z +36000, A -36000  (all @1000 sps)
+        # Backoff: Y -200,  X +500,   Z -500,   A +500    (all @1000 sps)
+        cmd = ("HOMEALL "
+               "20000 1000 -36000 1000 36000 1000 -36000 1000 "
+               "-200 1000 500 1000 -500 1000 500 1000")
+
+        self.log(f"[HomeAll] Sending: {cmd}")
+
+        try:
+            from protocol import ask
+            initial = ask(self.link, cmd)
+            self.log(f"[HomeAll] Initial response: {initial}")
+
+            if "ERR" in initial:
+                self.log(f"[HomeAll] ERROR from firmware: {initial}")
+                return {ax: False for ax in ['Y', 'X', 'Z', 'A']}
+
+            # Timeout: slowest axis is 36000 steps @ 2000 sps = 18s; add generous margin
+            timeout = 50.0
+            start_time = time.time()
+
+            homed = {'Y': False, 'X': False, 'Z': False, 'A': False}
+            success = False
+
+            self.log(f"[HomeAll] Waiting for all axes (timeout: {timeout:.0f}s)...")
+
+            while (time.time() - start_time) < timeout:
+                try:
+                    line = self.link.ser.readline().decode(errors="ignore").strip()
+
+                    if not line:
+                        pass
+                    elif line == "R:OK done":
+                        elapsed = time.time() - start_time
+                        self.log(f"[HomeAll] All axes homed in {elapsed:.1f}s")
+                        success = True
+                        break
+                    elif "STOPPER_HIT" in line:
+                        for ax in ['Y', 'X', 'Z', 'A']:
+                            if ax in line and not homed[ax]:
+                                homed[ax] = True
+                                setattr(self, f"{ax}_stopper_status", True)
+                                setattr(self, f"{ax}_homing_status", True)
+                                self.log(f"[HomeAll] {ax} stopper hit")
+                    elif "R:ERR" in line or "ESTOP" in line:
+                        self.log(f"[HomeAll] ERROR: {line}")
+                        break
+                    else:
+                        self.log(f"[HomeAll] Received: {line}")
+
+                except Exception as e:
+                    self.log(f"[HomeAll] Read error: {e}")
+                    break
+
+                if self.update_callback:
+                    try:
+                        self.update_callback()
+                    except Exception:
+                        pass
+
+                time.sleep(0.05)
+
+            if not success:
+                self.log(f"[HomeAll] TIMEOUT/ERROR after {time.time() - start_time:.1f}s")
+
+            # Final pin verification for each axis
+            for ax in ['Y', 'X', 'Z', 'A']:
+                pin_status = self.query_stopper_status(ax)
+                setattr(self, f"{ax}_stopper_status", pin_status)
+                self.log(f"[HomeAll] {ax} final pin: {'PRESSED' if pin_status else 'NOT PRESSED'}")
+
+            return homed
+
+        except Exception as e:
+            self.log(f"[HomeAll] ERROR: {e}")
+            return {ax: False for ax in ['Y', 'X', 'Z', 'A']}
+
     def sync(self):
         """Perform handshake/sync with robot"""
         if not self.link:

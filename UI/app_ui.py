@@ -186,16 +186,24 @@ class TicTacToeControlPanel(tk.Frame):
         top_frame.columnconfigure(1, weight=1)
         top_frame.columnconfigure(2, weight=1)
 
+        marker_num_frame = tk.Frame(top_frame, bg=self.PANEL_BG)
+        marker_num_frame.grid(row=0, column=0, padx=8, sticky='ew')
+        tk.Label(
+            marker_num_frame,
+            text="Marker number",
+            font=('Arial', 11),
+            bg=self.PANEL_BG,
+            anchor='w'
+        ).pack(side=tk.TOP, fill=tk.X)
         self.marker_number_entry = tk.Entry(
-            top_frame,
+            marker_num_frame,
             font=('Arial', 16),
             width=14,
             justify=tk.CENTER,
             relief=tk.SOLID,
-            borderwidth=2
+            borderwidth=1
         )
-        self.marker_number_entry.grid(row=0, column=0, padx=8, sticky='ew')
-        self._add_entry_placeholder(self.marker_number_entry, "Marker number")
+        self.marker_number_entry.pack(side=tk.TOP, fill=tk.X)
 
         self.status_button = tk.Button(
             top_frame,
@@ -203,10 +211,8 @@ class TicTacToeControlPanel(tk.Frame):
             font=('Arial', 24),
             width=11,
             command=self.on_status_pressed,
-            bg=self.BUTTON_BG,
-            fg=self.BUTTON_FG,
-            activebackground=self.BUTTON_ACTIVE_BG,
-            activeforeground=self.BUTTON_FG,
+            bg='#e0e0e0',
+            activebackground='#d0d0d0',
             relief=tk.RAISED,
             borderwidth=4
         )
@@ -256,10 +262,8 @@ class TicTacToeControlPanel(tk.Frame):
             font=('Arial', 24),
             width=12,
             command=self.on_your_turn_pressed,
-            bg=self.BUTTON_BG,
-            fg=self.BUTTON_FG,
-            activebackground=self.BUTTON_ACTIVE_BG,
-            activeforeground=self.BUTTON_FG,
+            bg='#e0e0e0',
+            activebackground='#d0d0d0',
             relief=tk.RAISED,
             borderwidth=4
         )
@@ -284,7 +288,7 @@ class TicTacToeControlPanel(tk.Frame):
 
     def on_status_pressed(self):
         marker_text = self.marker_number_entry.get().strip()
-        if marker_text == "Marker number" or not marker_text:
+        if not marker_text:
             self.marker_status_var.set("Enter marker #")
             self.log_callback("[TicTacToe] Marker number is required")
             return
@@ -356,18 +360,46 @@ class ScaraMainWindow:
         # Configure window
         self.root.title("SCARA Robot Controller")
         self.root.geometry("2200x1400")
-        self.root.minsize(2200, 1400)
-        
+
         # Tech mode state
         self.tech_mode_enabled = False
-        
-        # Configure root grid weights for resizing
+
+        # Root grid: canvas gets all space, scrollbars hug the edges
         self.root.columnconfigure(0, weight=1)
+        self.root.columnconfigure(1, weight=0)
         self.root.rowconfigure(0, weight=1)
-        
-        # Main container
-        main_container = tk.Frame(self.root, bg='#f5f5f5')
-        main_container.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
+        self.root.rowconfigure(1, weight=0)
+
+        # Scrollbars
+        v_scroll = tk.Scrollbar(self.root, orient=tk.VERTICAL)
+        h_scroll = tk.Scrollbar(self.root, orient=tk.HORIZONTAL)
+        v_scroll.grid(row=0, column=1, sticky='ns')
+        h_scroll.grid(row=1, column=0, sticky='ew')
+
+        # Canvas backing the scrollable area
+        self._canvas = tk.Canvas(
+            self.root, bg='#f5f5f5',
+            xscrollcommand=h_scroll.set,
+            yscrollcommand=v_scroll.set
+        )
+        self._canvas.grid(row=0, column=0, sticky='nsew')
+        v_scroll.config(command=self._canvas.yview)
+        h_scroll.config(command=self._canvas.xview)
+
+        # Main container lives inside the canvas
+        main_container = tk.Frame(self._canvas, bg='#f5f5f5')
+        self._canvas.create_window((0, 0), window=main_container, anchor='nw')
+
+        def _on_content_resize(_event):
+            self._canvas.configure(scrollregion=self._canvas.bbox('all'))
+
+        main_container.bind('<Configure>', _on_content_resize)
+
+        # Mouse-wheel scrolling (Windows)
+        def _on_mousewheel(event):
+            self._canvas.yview_scroll(int(-1 * (event.delta / 120)), 'units')
+
+        self._canvas.bind_all('<MouseWheel>', _on_mousewheel)
         main_container.columnconfigure(0, weight=1)  # Camera panel
         main_container.columnconfigure(1, weight=1)  # Axis Direct move
         main_container.columnconfigure(2, weight=1)  # Inverse kinematics
@@ -995,7 +1027,7 @@ class ScaraMainWindow:
         
         # Use grid layout for even distribution
         tk.Button(button_frame, text="Exit", command=self.on_exit, bg='#ffcccc', activebackground='#ffaaaa', **button_config).grid(row=0, column=0, padx=5, pady=0, sticky='ew')
-        tk.Button(button_frame, text="Home", command=self.on_home, bg='#ccffcc', activebackground='#aaffaa', **button_config).grid(row=0, column=1, padx=5, pady=0, sticky='ew')
+        tk.Button(button_frame, text="Home", command=self.on_home_parallel, bg='#ccffcc', activebackground='#aaffaa', **button_config).grid(row=0, column=1, padx=5, pady=0, sticky='ew')
         tk.Button(button_frame, text="Estop", command=self.on_estop, bg='#ffcccc', activebackground='#ffaaaa', **button_config).grid(row=0, column=2, padx=5, pady=0, sticky='ew')
         tk.Button(button_frame, text="CLR", command=self.on_clr, bg='#ffffcc', activebackground='#ffffaa', **button_config).grid(row=0, column=3, padx=5, pady=0, sticky='ew')
         
@@ -1331,6 +1363,72 @@ class ScaraMainWindow:
         self.z_axis.reset_button()
         self.a_axis.reset_button()
     
+    def on_home_parallel(self):
+        """Handle Home button press — homes all 4 axes simultaneously.
+        Falls back to on_home() if home_all_axes fails."""
+        for axis in ['Y', 'X', 'Z', 'A']:
+            self.update_homing_indicator(axis, False)
+
+        if not self.robot_controller.link:
+            self.log("[Home] ERROR: Not connected to robot")
+            self.root.update()
+            return
+
+        self.log("[Home] Starting parallel homing sequence for all axes")
+        self.root.update()
+
+        homed = self.robot_controller.home_all_axes()
+
+        for axis in ['Y', 'X', 'Z', 'A']:
+            self.update_stopper_indicator(axis, getattr(self.robot_controller, f"{axis}_stopper_status"))
+            self.update_homing_indicator(axis, getattr(self.robot_controller, f"{axis}_homing_status"))
+            self.log(f"[Home] {axis}: {'Homed' if homed.get(axis) else 'Failed homing'}")
+        self.root.update()
+
+        self.update_remain_values()
+        self.log(f"[Home] Homing complete - Y:{homed['Y']}, X:{homed['X']}, Z:{homed['Z']}, A:{homed['A']}")
+
+        status = self.check_and_enable_go_to_zero()
+        if status:
+            self.log("[Home] All axes homed successfully. Go to Zero button enabled.")
+            self.log("[Home] the current  robot position is  (-9.82,12.001) position.")
+            self.robot_controller.update_axis_position_after_home()
+            self.update_last_position_display()
+            self.move_to_position_button.config(state=tk.NORMAL)
+            self.log("[System] Move to Position button ENABLED - robot in home position  ✓")
+            self.pull_up_button.config(state=tk.NORMAL)
+            self.log("[System] PullUP button ENABLED - robot in home position  ✓")
+            self.put_down_button.config(state=tk.NORMAL)
+            self.log("[System] Put Down button ENABLED - robot in home position  ✓")
+
+        self.root.update()
+
+        for axis in ['Y', 'X', 'Z', 'A']:
+            self.robot_controller.update_axis_command(axis, "")
+        self.log("[Home] Axis commands cleared")
+
+        self.ik_x_entry.delete(0, tk.END)
+        self.ik_x_entry.insert(0, "0")
+        self.ik_y_entry.delete(0, tk.END)
+        self.ik_y_entry.insert(0, "0")
+        self.log("[Home] IK position fields reset to 0")
+
+        self.ik_x_angle_label.config(text="--", fg='#0066cc')
+        self.ik_z_angle_label.config(text="--", fg='#0066cc')
+        self.ik_dist_label.config(text="--", fg='#666666')
+        self.sec_x_angle_label.config(text="--", fg='#cc6600')
+        self.sec_z_angle_label.config(text="--", fg='#cc6600')
+        self.sec_dist_label.config(text="--", fg='#999966')
+        self.mov_x_angle_label.config(text="--", fg='#00aa00')
+        self.mov_z_angle_label.config(text="--", fg='#00aa00')
+        self.mov_dist_label.config(text="--", fg='#669966')
+        self.last_x_angle_label.config(text="--", fg='#886600')
+        self.last_z_angle_label.config(text="--", fg='#886600')
+        self.last_dist_label.config(text="--", fg='#888888')
+        self.log("[Home] IK angle displays cleared")
+
+        self.root.update()
+
     def on_home(self):
         """Handle Home button press."""
         # Reset homing indicators before starting a new homing cycle.
@@ -1424,6 +1522,33 @@ class ScaraMainWindow:
         self.robot_controller.update_axis_command("Z", "")
         self.robot_controller.update_axis_command("A", "")
         self.log("[Home] Axis commands cleared")
+
+        # Zero out IK position inputs
+        self.ik_x_entry.delete(0, tk.END)
+        self.ik_x_entry.insert(0, "0")
+        self.ik_y_entry.delete(0, tk.END)
+        self.ik_y_entry.insert(0, "0")
+        self.log("[Home] IK position fields reset to 0")
+
+        # Reset all four angle display sections
+        self.ik_x_angle_label.config(text="--", fg='#0066cc')
+        self.ik_z_angle_label.config(text="--", fg='#0066cc')
+        self.ik_dist_label.config(text="--", fg='#666666')
+
+        self.sec_x_angle_label.config(text="--", fg='#cc6600')
+        self.sec_z_angle_label.config(text="--", fg='#cc6600')
+        self.sec_dist_label.config(text="--", fg='#999966')
+
+        self.mov_x_angle_label.config(text="--", fg='#00aa00')
+        self.mov_z_angle_label.config(text="--", fg='#00aa00')
+        self.mov_dist_label.config(text="--", fg='#669966')
+
+        self.last_x_angle_label.config(text="--", fg='#886600')
+        self.last_z_angle_label.config(text="--", fg='#886600')
+        self.last_dist_label.config(text="--", fg='#888888')
+
+        self.log("[Home] IK angle displays cleared")
+
         self.root.update()
             
     def on_sync(self):
